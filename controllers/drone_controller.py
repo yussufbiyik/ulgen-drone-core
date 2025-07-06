@@ -48,8 +48,19 @@ class DroneController:
         
         # Temel Özellikler
         self.relative_position = np.array([0.0, 0.0, 0.0])
-        self.properties = {
+        current_properties = self.MAVSDKController.get_all()
+        self.all_properties = {
             "id": self.id,
+            "status": {
+            "state": {
+                "armed": current_properties.is_armed,
+                "mode": current_properties.flight_mode,
+            },
+            "battery": current_properties.battery,
+            "position": current_properties.gps_position,
+            "attitude": current_properties.attitude,
+            "velocity": current_properties.velocity,
+            }
         }
         
         # Rutin operasyonlar
@@ -72,6 +83,7 @@ class DroneController:
     def compute_control_velocity(self, target_position, neighbor_positions):
         """
         Kontrol hızı hesapla
+        
         :param target_position: Hedef konum
         :param neighbor_positions: Diğer dronların konumları ([x,y,z] şeklinde)
         :return: Hesaplanan hız vektörü
@@ -79,7 +91,6 @@ class DroneController:
         current_pos = self.get_position()
         v_pid = self.pid.compute(target_position, current_pos)
         f_apf = self.apf.calculate(current_pos, neighbor_positions)
-        
         total_velocity = v_pid + f_apf
         return total_velocity
     
