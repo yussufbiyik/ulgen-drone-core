@@ -40,11 +40,11 @@ class MAVSDKController:
         start_time = time.time()
         while time.time() - start_time < self.connection_timeout:
             try:
-                state = await self.drone.core.connection_state().observe(timeout=0.5)
-                if state.is_connected:
-                    logging.info("Drone sistem bağlantısı doğrulandı.")
-                    return True
-                break
+                async for state in await self.drone.core.connection_state():
+                    if state.is_connected:
+                        logging.info("Drone sistem bağlantısı doğrulandı.")
+                        return True
+                    break
             except Exception as e:
                 logging.debug(f"Bağlantı kontrolü: {e}")
             await asyncio.sleep(1)
@@ -74,25 +74,19 @@ class MAVSDKController:
         Drone'un gerekli tüm bilgilerini döndürür.
         """
         try:
-            results = await asyncio.gather(
-                self.get_flight_mode(),
-                self.get_health(),
-                self.get_remaining_battery(),
-                self.get_gps_info(),
-                self.get_gps_position(),
-                self.get_attitude(),
-                self.get_velocity()
-            )
-
-            mode, health, battery, gps_info, gps_position, attitude, velocity = results
+            health = await self.get_health()
+            battery = await self.get_remaining_battery()
+            gps_info = await self.get_gps_info()
+            gps_position = await self.get_gps_position()
+            orientation = await self.get_orientation()
+            velocity = await self.get_velocity()
             
             return {
-                "flight_mode": mode,
                 "health": health,
                 "battery": battery,
                 "gps_info": gps_info,
                 "gps_position": gps_position,
-                "attitude": attitude,
+                "orientation": orientation,
                 "velocity": velocity
             }
         except Exception as e:
@@ -105,18 +99,18 @@ class MAVSDKController:
         Drone'un kalibrasyon vb. bilgilerini döndürür.
         """
         try:
-            health = await self.drone.telemetry.health().observe(timeout=0.5)
-            return {
-                "kalibrasyon": {
-                    "manyetik": health.is_magnetometer_calibration_ok,
-                    "ivmeölçer": health.is_accelerometer_calibration_ok,
-                    "jiroskop": health.is_gyrometer_calibration_ok,
-                    "gps": health.is_global_position_ok
-                },
-                "sistem": {
-                    "armable": health.is_armable,
+            async for health in await self.drone.telemetry.health():
+                return {
+                    "kalibrasyon": {
+                        "manyetik": health.is_magnetometer_calibration_ok,
+                        "ivmeölçer": health.is_accelerometer_calibration_ok,
+                        "jiroskop": health.is_gyrometer_calibration_ok,
+                        "gps": health.is_global_position_ok
+                    },
+                    "sistem": {
+                        "armable": health.is_armable,
+                    }
                 }
-            }
         except Exception as e:
             logging.error(f"Sağlık bilgisi alınırken hata: {e}")
             return None
@@ -127,8 +121,8 @@ class MAVSDKController:
         Drone'un arm durumunu döndürür.
         """
         try:
-            is_armed = await self.drone.telemetry.armed().observe(timeout=0.5)
-            return is_armed
+            async for is_armed in await self.drone.telemetry.armed():
+                return is_armed
         except asyncio.TimeoutError:
             logging.error("Drone arm durumu alınırken zaman aşımına uğradı.")
             return None
@@ -142,8 +136,8 @@ class MAVSDKController:
         Drone'un durumunu döndürür.
         """
         try:
-            mode = await self.drone.telemetry.flight_mode().observe(timeout=0.5)
-            return mode
+            async for mode in await self.drone.telemetry.flight_mode():
+                return mode
         except asyncio.TimeoutError:
             logging.error("Drone durumu alınırken zaman aşımına uğradı.")
             return None
@@ -157,8 +151,8 @@ class MAVSDKController:
         Drone'un kalan bataryasını döndürür.
         """
         try:
-            battery = await self.drone.telemetry.battery().observe(timeout=0.5)
-            return battery.remaining_percent
+            async for battery in await self.drone.telemetry.battery():
+                return battery.remaining_percent
         except asyncio.TimeoutError:
             logging.error("Batarya bilgisi alınırken zaman aşımına uğradı.")
             return None
@@ -172,11 +166,11 @@ class MAVSDKController:
         Drone'un GPS bilgilerini döndürür.
         """
         try:
-            gps_info = await self.drone.telemetry.gps_info().observe(timeout=0.5)
-            return {
-                        "Bağlı Uydular":gps_info.num_satellites, 
-                        "Fix Type":gps_info.fix_type
-                    }
+            async for gps_info in await self.drone.telemetry.gps_info():
+                return {
+                            "Bağlı Uydular":gps_info.num_satellites, 
+                            "Fix Type":gps_info.fix_type
+                        }
         except asyncio.TimeoutError:
             logging.error("GPS bilgisi alınırken zaman aşımına uğradı.")
             return None
@@ -190,12 +184,12 @@ class MAVSDKController:
         Drone'un GPS konumunu döndürür.
         """
         try:
-            position = await self.drone.telemetry.position().observe(timeout=0.5)
-            return {
-                "latitude": position.latitude_deg,
-                "longitude": position.longitude_deg,
-                "altitude": position.absolute_altitude_m
-            }
+            async for position in await self.drone.telemetry.position():
+                return {
+                    "latitude": position.latitude_deg,
+                    "longitude": position.longitude_deg,
+                    "altitude": position.absolute_altitude_m
+                }
         except asyncio.TimeoutError:
             logging.error("GPS konum bilgisi alınırken zaman aşımına uğradı.")
             return None
@@ -209,12 +203,12 @@ class MAVSDKController:
         Drone'un yön bilgilerini döndürür (yaw, pitch, roll).
         """
         try:
-            attitude_euler = await self.drone.telemetry.attitude_euler().observe(timeout=0.5)
-            return {
-                "yaw": attitude_euler.yaw_deg,
-                "pitch": attitude_euler.pitch_deg,
-                "roll": attitude_euler.roll_deg
-            }
+            async for attitude_euler in await self.drone.telemetry.attitude_euler():
+                return {
+                    "yaw": attitude_euler.yaw_deg,
+                    "pitch": attitude_euler.pitch_deg,
+                    "roll": attitude_euler.roll_deg
+                }
         except asyncio.TimeoutError:
             logging.error("Yön bilgisi alınırken zaman aşımına uğradı.")
             return None
@@ -228,12 +222,12 @@ class MAVSDKController:
         Drone'un anlık hız bilgisini döndürür.
         """
         try:
-            velocity = await self.drone.telemetry.velocity_ned().observe(timeout=0.5)
-            return {
-                "north": velocity.north_m_s,
-                "east": velocity.east_m_s,
-                "down": velocity.down_m_s
-            }
+            async for velocity in await self.drone.telemetry.velocity_ned():
+                return {
+                    "north": velocity.north_m_s,
+                    "east": velocity.east_m_s,
+                    "down": velocity.down_m_s
+                }
         except asyncio.TimeoutError:
             logging.error("Anlık hız bilgisi alınırken zaman aşımına uğradı.")
             return None
@@ -256,9 +250,9 @@ async def main():
     controller = MAVSDKController(system_address="serial:///dev/ttyUSB0:57600")
     await controller.connect()
     if controller.is_connected:
-        await asyncio.sleep(0.5)
-        all_info = await controller.get_all()
-        logging.info(f"Tüm bilgiler:\n\t{all_info}")
+        # await asyncio.sleep(0.5)
+        # all_info = await controller.get_all()
+        # logging.info(f"Tüm bilgiler:\n\t{all_info}")
         controller.disconnect()
     else:
         logging.error("Drone ile bağlantı kurulamadı.")
