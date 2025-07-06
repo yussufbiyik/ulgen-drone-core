@@ -22,7 +22,7 @@ def check_connected(func):
     return wrapper
     
 class MAVSDKController:
-    def __init__(self, system_address="udp://:14540", telemetry_timeout=5, connection_timeout=30):
+    def __init__(self, system_address="udpin://0.0.0.0:14540", telemetry_timeout=5, connection_timeout=30):
         self.drone = System()
         self.connection_url = system_address
         self.telemetry_timeout = telemetry_timeout
@@ -67,7 +67,7 @@ class MAVSDKController:
     @check_connected
     async def get_all(self):
         """
-        Drone'un tüm gerekli bilgilerini döndürür.
+        Drone'un gerekli tüm bilgilerini döndürür.
         """
         try:
             health = await self.get_health()
