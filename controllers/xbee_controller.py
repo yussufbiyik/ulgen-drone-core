@@ -1,5 +1,4 @@
 import os
-import uuid
 import json
 import time
 import logging
@@ -27,7 +26,7 @@ def check_connected(func):
 
 class XBeeController:
     def __init__(self, uuid, port, message_received_callback, baudrate=9600, max_queue_size=20):
-        self.uuid = self.uuid
+        self.uuid = uuid
         self.port = port
         self.baudrate = baudrate
         self.device = XBeeDevice(port, baudrate)
@@ -135,3 +134,22 @@ class XBeeController:
             logging.info("Mesaj kuyruğu işleme thread'i durduruldu.")
         else:
             logging.warning("XBee zaten kapalı.")
+            
+
+if __name__ == "__main__":
+    # Örnek kullanım
+    def message_received_callback(message):
+        print(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
+
+    xbee = XBeeController(uuid="12345", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+    xbee.listen()
+    
+    # Mesaj gönderme örneği
+    xbee.send_broadcast_message({"test": "Hello, XBee!"})
+    
+    # Uygulama kapatılırken XBee cihazını kapat
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        xbee.close()
