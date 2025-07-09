@@ -8,11 +8,11 @@ from queue import Queue, Full
 
 from digi.xbee.devices import XBeeDevice
 
-os.makedirs("logs", exist_ok=True)
+os.makedirs("./logs", exist_ok=True)
 logging.basicConfig(
         level=logging.INFO, 
         format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s',
-        filename=f"../logs/XBeeController_{int(time.time()*1000)}.log",
+        filename=f"../logs/XBeeController.log",
     )
 
 def check_connected(func):
@@ -93,7 +93,8 @@ class XBeeController:
             "data": data,
             "timestamp": int(time.time()*1000)
         }
-        return json.dumps(message).encode('utf-8', errors='replace')
+        logging.debug(f"Mesaj yapılandırıldı.")
+        return json.dumps(message, ensure_ascii=False)
     
     @check_connected
     def send_broadcast_message(self, data):
