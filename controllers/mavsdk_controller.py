@@ -4,7 +4,6 @@ import json
 import logging
 import asyncio
 import functools
-import threading
 from mavsdk import System
 
 log_name = f"./logs/MAVSDKController.log"
