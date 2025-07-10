@@ -4,7 +4,7 @@ import time
 import logging
 import threading
 import functools
-from queue import Queue, Full
+from queue import Queue, Full, Empty
 
 from digi.xbee.devices import XBeeDevice
 
@@ -49,12 +49,18 @@ class XBeeController:
         Mesaj kuyruğundan mesajları işleyen thread fonksiyonu.
         """
         while not self.queue_stop_event.is_set():
-            message = self.recent_messages.get(timeout=0.5)
-            message_data = message.data.decode('utf-8', errors='replace')
-            logging.info(f"Mesaj işleniyor: {message_data}")
-            self.message_received_callback(message)
-            logging.info("Callback çağrıldı.")
-            self.recent_messages.task_done()
+            try:
+                message = self.recent_messages.get(timeout=0.5)
+                message_data = message.data.decode('utf-8', errors='replace')
+                logging.info(f"Mesaj işleniyor: {message_data}")
+                self.message_received_callback(message)
+                logging.info("Callback çağrıldı.")
+                self.recent_messages.task_done()
+            except Empty:
+                # Queue boşken timeout olursa devam et
+                continue
+            except Exception as e:
+                logging.error(f"Mesaj işlenirken hata oluştu: {e}")
     
     def default_message_received_callback(self, message):
         """
@@ -80,12 +86,20 @@ class XBeeController:
         Xbee mesajlarını dinler ve mesaj gelince callback fonksiyonunu çağırır.
         """
         try:
+            # Önce cihazın mevcut olup olmadığını kontrol et
+            if not self.check_device_availability():
+                raise Exception(f"XBee cihazı {self.port} portunda bulunamadı.")
+                
             if not self.device.is_open():
+                logging.info("XBee cihazı açılıyor...")
                 self.device.open()
+                logging.info("XBee cihazı başarıyla açıldı.")
             self.device.add_data_received_callback(self.default_message_received_callback)
             logging.info("XBee dinleniyor...")
         except Exception as e:
             logging.error(f"XBee açılamadı: {e}")
+            logging.info("XBee cihazının bağlı olduğundan ve doğru port belirtildiğinden emin olun.")
+            logging.info("Ayrıca XBee cihazının API modunda olduğundan emin olun.")
             raise
     
     def construct_message(self, data):
@@ -135,11 +149,29 @@ class XBeeController:
         if self.device.is_open():
             self.device.close()
             logging.info("XBee kapatıldı.")
-            self.stop_event.set()
+            self.queue_stop_event.set()
             logging.info("Mesaj kuyruğu işleme thread'i durduruldu.")
         else:
             logging.warning("XBee zaten kapalı.")
-            
+            self.queue_stop_event.set()
+    
+    def check_device_availability(self):
+        """
+        XBee cihazının mevcut olup olmadığını kontrol eder.
+        """
+        import serial
+        try:
+            # Portu açmayı dene
+            test_serial = serial.Serial(self.port, self.baudrate, timeout=1)
+            test_serial.close()
+            logging.info(f"Port {self.port} mevcut ve erişilebilir.")
+            return True
+        except serial.SerialException as e:
+            logging.error(f"Port {self.port} erişilemez: {e}")
+            return False
+        except Exception as e:
+            logging.error(f"Port kontrolü sırasında beklenmeyen hata: {e}")
+            return False
 
 if __name__ == "__main__":
     # Örnek kullanım
@@ -147,14 +179,22 @@ if __name__ == "__main__":
         print(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
 
     xbee = XBeeController(uuid="12345", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
-    xbee.listen()
     
-    # Mesaj gönderme örneği
-    xbee.send_broadcast_message({"test": "Hello, XBee!"})
-    
-    # Uygulama kapatılırken XBee cihazını kapat
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        xbee.close()
+        xbee.listen()
+        
+        # Mesaj gönderme örneği
+        xbee.send_broadcast_message({"test": "Hello, XBee!"})
+        
+        # Uygulama kapatılırken XBee cihazını kapat
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logging.info("Uygulama kapatılıyor...")
+            xbee.close()
+    except Exception as e:
+        logging.error(f"Uygulama başlatılamadı: {e}")
+        logging.info("Lütfen XBee cihazının bağlı olduğundan emin olun.")
+        if hasattr(xbee, 'device') and xbee.device.is_open():
+            xbee.close()
