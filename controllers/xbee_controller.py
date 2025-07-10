@@ -12,6 +12,7 @@ import serial
 from queue import Queue, Full
 import functools
 from digi.xbee.devices import XBeeDevice
+from digi.xbee.exception import XBeeException, TransmitException, TimeoutException, InvalidOperatingModeException
 
 # Logging configuration
 log_name = "./logs/XBeeController.log"
@@ -60,7 +61,7 @@ class XBeeController:
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
-        self.configure_xbee_api_mode()
+        # self.configure_xbee_api_mode()
         if self.message_received_callback:
             threading.Thread(target=self.queue_processor, daemon=True).start()
             logger.warning("Mesaj kuyruğu işleme thread'i başlatıldı.")
@@ -107,33 +108,27 @@ class XBeeController:
         """
         try:
             logger.info("XBee cihazı API moduna geçiriliyor...")
-            
             # Serial bağlantı kur
             ser = serial.Serial(self.port, self.baudrate, timeout=2)
             time.sleep(1)  # Bağlantının stabilleşmesi için bekle
-            
             # Command moduna geç
             ser.write(b'+++')
             time.sleep(2)
             response = ser.read(ser.in_waiting)
             logger.info(f"Command mode response: {response}")
-            
             # API mode 1'e geç (AP=1)
             ser.write(b'ATAP1\r')
             time.sleep(0.5)
             response = ser.read(ser.in_waiting)
             logger.info(f"API mode response: {response}")
-            
             # Ayarları kaydet
             ser.write(b'ATWR\r')
             time.sleep(0.5)
             response = ser.read(ser.in_waiting)
             logger.info(f"Write response: {response}")
-            
             # Command modundan çık
             ser.write(b'ATCN\r')
             time.sleep(0.5)
-            
             ser.close()
             logger.info("XBee başarıyla API moduna geçirildi.")
             return True
@@ -160,12 +155,12 @@ class XBeeController:
         Verilen mesajı JSON formatına çevirir.
         """
         message = {
-            "uuid": self.uuid,
-            "data": data,
-            "timestamp": int(time.time()*1000)
+            "i": self.uuid,
+            "d": data,
+            "t": int(time.time()*1000)
         }
         logger.debug(f"Mesaj yapılandırıldı.")
-        return json.dumps(message, ensure_ascii=False)
+        return json.dumps(message, ensure_ascii=False).replace("\n", "").replace(" ", "").encode('utf-8')
     
     @check_connected
     def send_broadcast_message(self, data):
@@ -174,12 +169,21 @@ class XBeeController:
         """
         try:
             message = self.construct_message(data)
-            self.device.send_data_broadcast(message)
+            logger.debug(f"Broadcast mesajı yapılandırıldı: {message}")
+            self.device.send_data_broadcast(data)
             logger.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: Broadcast")
             return True
-        except Exception as e:
-            logger.error(f"Mesaj gönderilemedi: {e}")
-            logger.info(f"Device state: {self.device.get_parameter('AI')}")
+        except XBeeException as e:
+            logger.error(f"XBee Hatası: {e}")
+            return False
+        except TimeoutException as e:
+            logger.error(f"Zaman aşımı hatası: {e}")
+            return False
+        except TransmitException as e:
+            logger.error(f"Transmit hatası: {e}")
+            return False
+        except InvalidOperatingModeException as e:
+            logger.error(f"Geçersiz çalışma modu hatası: {e}")
             return False
     
     @check_connected
@@ -203,7 +207,7 @@ class XBeeController:
         if self.device.is_open():
             self.device.close()
             logger.info("XBee kapatıldı.")
-            self.stop_event.set()
+            self.queue_stop_event.set()
             logger.info("Mesaj kuyruğu işleme thread'i durduruldu.")
         else:
             logger.warning("XBee zaten kapalı.")
@@ -214,14 +218,28 @@ if __name__ == "__main__":
     def message_received_callback(message):
         logger.info(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
 
-    xbee = XBeeController(uuid="12345", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+    xbee = XBeeController(uuid="123", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
     xbee.listen()
     
     # Uygulama kapatılırken XBee cihazını kapat
     try:
         while True:
             # Mesaj gönderme örneği
-            xbee.send_broadcast_message({"test": "Hello, XBee!"})
-            time.sleep(10)
+            xbee.send_broadcast_message("123,1,1,3,50,47.397971299999995,8.5461633,5.200000286102295")
+            # xbee.send_broadcast_message({
+            #     "d": {
+            #         "ab":1,
+            #         "a": 1,
+            #         "fm": 3,
+            #         "b": 50,
+            #         "gps": 
+            #             {
+            #                 "la": 47.397971299999995,
+            #                 "lo": 8.5461633,
+            #                 "al": 5.200000286102295
+            #             }
+            #     }
+            # })
+            time.sleep(15)
     except KeyboardInterrupt:
         xbee.close()
