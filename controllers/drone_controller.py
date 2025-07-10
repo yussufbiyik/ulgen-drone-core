@@ -1,20 +1,28 @@
 import os
 import time
 import uuid
+import asyncio
 import numpy as np
+import json
 import threading
 import logging
 
-from ..utils.pid import PID
-from ..utils.collision_avoidance.apf import APF
+from utils import pid
+from utils.collision_avoidance import apf
 
-from mavsdk_controller import MAVSDKController
-from xbee_controller import XBeeController
+from controllers import mavsdk_controller
+from controllers import xbee_controller
 
+log_name = "./logs/DroneController.log"
+os.makedirs("./logs", exist_ok=True)
+
+sh = logging.StreamHandler()
+sh.setLevel(logging.INFO)
+fh = logging.FileHandler(log_name, mode='w')
+fh.setLevel(logging.DEBUG)
 logging.basicConfig(
-        level=logging.INFO, 
-        format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s',
-        filename=f"../logs/DRONE_{int(time.time()*1000)}.log",
+        format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
+        handlers=[fh, sh]
     )
 
 def broadcast_drone_status(XBeeController, MAVSDKController):
@@ -37,48 +45,47 @@ def handle_message_received(message):
 
 class DroneController:
     def __init__(self):
-        self.id = str(uuid.uuid4())
+        self.uuid = str(uuid.uuid4())
         
         # Kontrolcüler
-        self.pid = PID()
-        self.apf = APF()
+        self.pid = pid.PID()
+        self.apf = apf.APF()
         
-        self.XBeeController = XBeeController(self.uuid, "PORT", message_received_callback=handle_message_received)
-        self.MAVSDKController = MAVSDKController()
+        # self.XBeeController = xbee_controller.XBeeController(self.uuid, "PORT", message_received_callback=handle_message_received)
+        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.uuid)
         
         # Temel Özellikler
         self.relative_position = np.array([0.0, 0.0, 0.0])
-        current_properties = self.MAVSDKController.get_all()
-        self.all_properties = {
-            "id": self.id,
-            "status": {
-            "state": {
-                "armed": current_properties.is_armed,
-                "mode": current_properties.flight_mode,
-            },
-            "battery": current_properties.battery,
-            "position": current_properties.gps_position,
-            "attitude": current_properties.attitude,
-            "velocity": current_properties.velocity,
-            }
-        }
         
         # Rutin operasyonlar
-        threading.Thread(target=broadcast_drone_status(self.XBeeController, self.MAVSDKController), daemon=True).start()
+        # threading.Thread(target=broadcast_drone_status(self.XBeeController, self.MAVSDKController), daemon=True).start()
 
-    def arm(self):
+    async def arm(self):
         """
         Drone'u arm eder
         """
-        return NotImplemented
+        await self.MAVSDKController.drone.action.arm()
+
+    async def disarm(self):
+        """
+        Drone'u disarm eder
+        """
+        await self.MAVSDKController.drone.action.disarm()
     
-    def takeoff(self, altitude): 
+    async def takeoff(self, altitude): 
         """
         Drone'a kalkış komutu gönderir
         
         :param altitude: Kalkış yüksekliği
         """
-        return NotImplemented
+        await self.MAVSDKController.drone.action.set_takeoff_altitude(altitude)
+        await self.MAVSDKController.drone.action.takeoff()
+
+    async def land(self): 
+        """
+        Drone'a iniş komutu gönderir
+        """
+        await self.MAVSDKController.drone.action.land()
     
     def compute_control_velocity(self, target_position, neighbor_positions):
         """
@@ -99,3 +106,54 @@ class DroneController:
         Hız komutu gönder
         """
         return NotImplemented
+    
+async def main():
+    """
+    DroneController temel işlemlerini gerçekleştirir.
+    """
+    drone_controller = DroneController()
+    await drone_controller.MAVSDKController.connect()
+    while not drone_controller.MAVSDKController.is_connected:
+        logging.info(drone_controller.MAVSDKController.is_connected)
+        logging.info("DroneController henüz bağlı değil, bağlanmaya çalışılıyor...")
+        await asyncio.sleep(1)
+    
+    # Örnek kullanım
+    target_altitude = 5
+    await drone_controller.arm()
+    logging.debug("arm() komutu verildi.")
+    while True:
+        _general_info = await drone_controller.MAVSDKController.get_general_info()
+        _gps_position = _general_info["status"].get("gps_position")
+        if _gps_position and "altitude" in _gps_position:
+            pre_takeoff_altitude = _gps_position["altitude"]
+            break
+        logging.info("GPS konum bilgisi henüz alınamadı, bekleniyor...")
+        await asyncio.sleep(0.5)
+    await drone_controller.takeoff(target_altitude)
+    logging.debug("takeoff() komutu verildi.")
+    while True:
+        general_info = await drone_controller.MAVSDKController.get_general_info()
+        gps_position = general_info["status"].get("gps_position")
+        climbed = gps_position["altitude"] - pre_takeoff_altitude
+        logging.info(f"Drone {climbed} metre yükseldi.")
+        if abs(target_altitude - climbed) <= 0.2:
+            logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı, land() komutu veriliyor.")
+            break
+        await asyncio.sleep(1)
+    # İniş yap
+    await drone_controller.land()
+    logging.debug("land() komutu verildi.")
+    async for is_in_air in drone_controller.MAVSDKController.drone.telemetry.in_air():
+        if not is_in_air:
+            logging.info("Drone zeminde, disarm ediliyor.")
+            break
+        logging.info("Drone hala havada, bekleniyor...")
+        await asyncio.sleep(1)
+    await drone_controller.disarm()
+    logging.info("Drone disarm edildi.")
+    logging.info("DroneController işlemleri tamamlandı.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    logging.info("DroneController başlatıldı.")

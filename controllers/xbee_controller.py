@@ -8,11 +8,15 @@ from queue import Queue, Full
 
 from digi.xbee.devices import XBeeDevice
 
+log_name = "./logs/DroneController.log"
 os.makedirs("./logs", exist_ok=True)
 logging.basicConfig(
-        level=logging.INFO, 
-        format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s',
-        filename=f"../logs/XBeeController.log",
+        level=logging.DEBUG,
+        format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
+        handlers=[
+            logging.FileHandler(log_name, mode='w'),
+            logging.StreamHandler()
+        ]
     )
 
 def check_connected(func):

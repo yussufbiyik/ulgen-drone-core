@@ -8,14 +8,12 @@ from mavsdk import System
 
 log_name = f"./logs/MAVSDKController.log"
 os.makedirs("./logs", exist_ok=True)
-logging.basicConfig(
-        level=logging.DEBUG,
-        format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
-        handlers=[
-            logging.FileHandler(log_name),
-            logging.StreamHandler()
-        ]
-    )
+
+logger = logging.getLogger("MAVSDKController")
+sh = logging.StreamHandler()
+sh.setLevel(logging.INFO)
+fh = logging.FileHandler(log_name, mode='w')
+fh.setLevel(logging.DEBUG)
 
 def check_connected(func):
     @functools.wraps(func)
@@ -57,14 +55,14 @@ class MAVSDKController:
             try:
                 async for state in self.drone.core.connection_state():
                     if state.is_connected:
-                        logging.info("Drone sistem bağlantısı doğrulandı.")
+                        logger.info("Drone sistem bağlantısı doğrulandı.")
                         return True
                     break
             except Exception as e:
-                logging.debug(f"Bağlantı kontrolü: {e}")
+                logger.debug(f"Bağlantı kontrolü: {e}")
             await asyncio.sleep(1)
         
-        logging.error("Sistem bağlantısı zaman aşımı.")
+        logger.error("Sistem bağlantısı zaman aşımı.")
         return False
     
     async def connect(self):
@@ -75,15 +73,15 @@ class MAVSDKController:
             await self.drone.connect(system_address=self.connection_url)
             if await self.wait_for_connection():
                 self.is_connected = True
-                logging.info(f"{self.connection_url} adresine bağlanıldı.")
+                logger.info(f"{self.connection_url} adresine bağlanıldı.")
                 # Arka planda tüm parametreleri almayı başlat
                 asyncio.create_task(self.update_general_info())
             else:
-                logging.error("Drone bağlantısı kurulamıyor.")
+                logger.error("Drone bağlantısı kurulamıyor.")
                 self.is_connected = False
         except Exception as e:
             self.is_connected = False
-            logging.error(f"Bağlanmaya çalışırken hata: {e}")
+            logger.error(f"Bağlanmaya çalışırken hata: {e}")
 
     async def update_general_info(self):
         """
@@ -112,14 +110,14 @@ class MAVSDKController:
                 self.general_status["status"]["velocity"] = velocity
 
                 status_json = json.dumps(self.general_status, indent=2, ensure_ascii=False)
-                logging.debug(f"Tüm parametreler güncellendi, parametrelerin son durumu:\n\t\t{status_json}")
+                logger.debug(f"Tüm parametreler güncellendi, parametrelerin son durumu:\n\t\t{status_json}")
             except Exception as e:
-                logging.error(f"Drone bilgileri güncellenirken hata: {e}")
+                logger.error(f"Drone bilgileri güncellenirken hata: {e}")
                 return None
             await asyncio.sleep(0.5)
     
     @check_connected
-    def get_general_info(self):
+    async def get_general_info(self):
         """
         Drone'un genel bilgilerini döndürür.
         """
@@ -144,7 +142,7 @@ class MAVSDKController:
                     }
                 }
         except Exception as e:
-            logging.error(f"Sağlık bilgisi alınırken hata: {e}")
+            logger.error(f"Sağlık bilgisi alınırken hata: {e}")
             return None
         
     @check_connected
@@ -156,10 +154,10 @@ class MAVSDKController:
             async for arm in self.drone.telemetry.armed():
                 return arm
         except asyncio.TimeoutError:
-            logging.error("Drone arm durumu alınırken zaman aşımına uğradı.")
+            logger.error("Drone arm durumu alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"Drone arm durumu alınırken hata: {e}")
+            logger.error(f"Drone arm durumu alınırken hata: {e}")
             return None
         
     @check_connected
@@ -171,10 +169,10 @@ class MAVSDKController:
             async for mode in self.drone.telemetry.flight_mode():
                 return mode.name
         except asyncio.TimeoutError:
-            logging.error("Drone durumu alınırken zaman aşımına uğradı.")
+            logger.error("Drone durumu alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"Drone durumu alınırken hata: {e}")
+            logger.error(f"Drone durumu alınırken hata: {e}")
             return None
     
     @check_connected
@@ -186,10 +184,10 @@ class MAVSDKController:
             async for battery in self.drone.telemetry.battery():
                 return battery.remaining_percent
         except asyncio.TimeoutError:
-            logging.error("Batarya bilgisi alınırken zaman aşımına uğradı.")
+            logger.error("Batarya bilgisi alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"Batarya bilgisi alınırken hata: {e}")
+            logger.error(f"Batarya bilgisi alınırken hata: {e}")
             return None
     
     @check_connected
@@ -203,10 +201,10 @@ class MAVSDKController:
                             "Bağlı Uydular":gps_info.num_satellites
                         }
         except asyncio.TimeoutError:
-            logging.error("GPS bilgisi alınırken zaman aşımına uğradı.")
+            logger.error("GPS bilgisi alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"GPS bilgisi alınırken hata: {e}")
+            logger.error(f"GPS bilgisi alınırken hata: {e}")
             return None
     
     @check_connected
@@ -222,10 +220,10 @@ class MAVSDKController:
                     "altitude": position.absolute_altitude_m
                 }
         except asyncio.TimeoutError:
-            logging.error("GPS konum bilgisi alınırken zaman aşımına uğradı.")
+            logger.error("GPS konum bilgisi alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"GPS konum bilgisi alınırken hata: {e}")
+            logger.error(f"GPS konum bilgisi alınırken hata: {e}")
             return None
     
     @check_connected
@@ -241,10 +239,10 @@ class MAVSDKController:
                     "roll": attitude_euler.roll_deg
                 }
         except asyncio.TimeoutError:
-            logging.error("Yön bilgisi alınırken zaman aşımına uğradı.")
+            logger.error("Yön bilgisi alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"Yön bilgisi alınırken hata: {e}")
+            logger.error(f"Yön bilgisi alınırken hata: {e}")
             return None
     
     @check_connected
@@ -260,10 +258,10 @@ class MAVSDKController:
                     "down": velocity.down_m_s
                 }
         except asyncio.TimeoutError:
-            logging.error("Anlık hız bilgisi alınırken zaman aşımına uğradı.")
+            logger.error("Anlık hız bilgisi alınırken zaman aşımına uğradı.")
             return None
         except Exception as e:
-            logging.error(f"Anlık hız bilgisi alınırken hata: {e}")
+            logger.error(f"Anlık hız bilgisi alınırken hata: {e}")
             return None
     
     def disconnect(self):
@@ -273,9 +271,9 @@ class MAVSDKController:
         if self.is_connected:
             self.drone = System()
             self.is_connected = False
-            logging.info("Drone bağlantısı kesildi.")
+            logger.info("Drone bağlantısı kesildi.")
         else:
-            logging.warning("Drone zaten bağlı değil.")
+            logger.warning("Drone zaten bağlı değil.")
 
 async def main():
     """
@@ -292,10 +290,10 @@ async def main():
     await controller.connect()
     if controller.is_connected:
         while True:
-            logging.info("Log kayıtlarından tüm bilgileri görebilirsiniz.")
+            logger.info("Log kayıtlarından tüm bilgileri görebilirsiniz.")
             await asyncio.sleep(1)
     else:
-        logging.error("Drone ile bağlantı kurulamadı.")
+        logger.error("Drone ile bağlantı kurulamadı.")
 
 if __name__ == "__main__":
     asyncio.run(main())
