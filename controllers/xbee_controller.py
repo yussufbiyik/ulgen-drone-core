@@ -8,9 +8,9 @@ import json
 import threading
 import time
 import logging
+import serial
 from queue import Queue, Full
 import functools
-from collections import deque
 from digi.xbee.devices import XBeeDevice
 
 # Logging configuration
@@ -44,7 +44,7 @@ class XBeeController:
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
-        
+        self.configure_xbee_api_mode()
         if self.message_received_callback:
             threading.Thread(target=self.queue_processor, daemon=True).start()
             logging.warning("Mesaj kuyruğu işleme thread'i başlatıldı.")
@@ -85,6 +85,47 @@ class XBeeController:
         except Exception as e:
             logging.error(f"Mesaj işlenirken hata oluştu: {e}")
     
+    def configure_xbee_api_mode(self):
+        """
+        XBee cihazını API moduna geçirir.
+        """
+        try:
+            logging.info("XBee cihazı API moduna geçiriliyor...")
+            
+            # Serial bağlantı kur
+            ser = serial.Serial(self.port, self.baudrate, timeout=2)
+            time.sleep(1)  # Bağlantının stabilleşmesi için bekle
+            
+            # Command moduna geç
+            ser.write(b'+++')
+            time.sleep(1)
+            response = ser.read(ser.in_waiting)
+            logging.debug(f"Command mode response: {response}")
+            
+            # API mode 1'e geç (AP=1)
+            ser.write(b'ATAP1\r')
+            time.sleep(0.5)
+            response = ser.read(ser.in_waiting)
+            logging.debug(f"API mode response: {response}")
+            
+            # Ayarları kaydet
+            ser.write(b'ATWR\r')
+            time.sleep(0.5)
+            response = ser.read(ser.in_waiting)
+            logging.debug(f"Write response: {response}")
+            
+            # Command modundan çık
+            ser.write(b'ATCN\r')
+            time.sleep(0.5)
+            
+            ser.close()
+            logging.info("XBee başarıyla API moduna geçirildi.")
+            return True
+            
+        except Exception as e:
+            logging.error(f"XBee API moduna geçirilirken hata: {e}")
+            return False
+
     def listen(self):
         """
         Xbee mesajlarını dinler ve mesaj gelince callback fonksiyonunu çağırır.
@@ -154,17 +195,16 @@ class XBeeController:
 if __name__ == "__main__":
     # Örnek kullanım
     def message_received_callback(message):
-        print(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
+        logging.info(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
 
     xbee = XBeeController(uuid="12345", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
     xbee.listen()
     
-    # Mesaj gönderme örneği
-    xbee.send_broadcast_message({"test": "Hello, XBee!"})
-    
     # Uygulama kapatılırken XBee cihazını kapat
     try:
         while True:
+            # Mesaj gönderme örneği
+            xbee.send_broadcast_message({"test": "Hello, XBee!"})
             time.sleep(1)
     except KeyboardInterrupt:
         xbee.close()
