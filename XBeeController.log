@@ -1,4 +1,0 @@
-[2025-07-10 15:06:35,161 | ERROR]
-	⤷ XBee Controller başlatılamadı: [Errno 11] Could not exclusively lock port /dev/ttyUSB0: [Errno 11] Resource temporarily unavailable
-[2025-07-10 15:06:35,162 | ERROR]
-	⤷ XBee Controller başlatılamadı!

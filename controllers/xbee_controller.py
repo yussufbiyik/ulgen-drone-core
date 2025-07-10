@@ -4,15 +4,17 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
+import json
 import threading
 import time
 import logging
+from queue import Queue, Full
+import functools
 from collections import deque
 from digi.xbee.devices import XBeeDevice
 
 # Logging configuration
 log_name = "./logs/XBeeController.log"
-os.makedirs("./logs", exist_ok=True)
 
 logger = logging.getLogger("XBeeController")
 sh = logging.StreamHandler()
@@ -24,204 +26,145 @@ logging.basicConfig(
         handlers=[fh, sh]
     )
 
+def check_connected(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if not self.device.is_open():
+            logging.error("XBee cihazı açık değil.")
+            return None
+        return func(self, *args, **kwargs)
+    return wrapper
+
 class XBeeController:
-    def __init__(self, port="/dev/ttyUSB0", baud_rate=57600, send_interval=0.1, queue_retention=10, remote_node_id="REMOTE", drone_name="drone2"):
-        """
-        XBee Controller sınıfı
-        
-        Args:
-            port: XBee cihazının bağlı olduğu port
-            baud_rate: Baud rate
-            send_interval: Mesaj gönderme aralığı (saniye)
-            queue_retention: Kuyrukta mesaj tutma süresi (saniye)
-            remote_node_id: Uzak cihaz ID'si (None ise broadcast)
-            drone_name: Bu drone'un adı
-        """
+    def __init__(self, uuid, port, message_received_callback, baudrate=57600, max_queue_size=20):
+        self.uuid = uuid
         self.port = port
-        self.baud_rate = baud_rate
-        self.send_interval = send_interval
-        self.queue_retention = queue_retention
-        self.remote_node_id = remote_node_id
-        self.drone_name = drone_name
+        self.baudrate = baudrate
+        self.device = XBeeDevice(port, baudrate)
+        self.message_received_callback = message_received_callback
+        self.recent_messages = Queue(maxsize=max_queue_size)
+        self.queue_stop_event = threading.Event()
         
-        self.device = XBeeDevice(port, baud_rate)
-        self.remote_device_cache = None
-        self.signal_queue = deque()
-        self.queue_lock = threading.Lock()
-        
-        self.sender_thread = None
-        self.cleaner_thread = None
-        self.is_running = False
-        
-        logger.info(f"XBeeController oluşturuldu - Port: {port}, Baud: {baud_rate}")
+        if self.message_received_callback:
+            threading.Thread(target=self.queue_processor, daemon=True).start()
+            logging.warning("Mesaj kuyruğu işleme thread'i başlatıldı.")
+        else:
+            logging.warning("Mesaj alındığında çağrılacak callback fonksiyonu belirtilmemiş.")
     
-    def get_message(self):
+    def queue_processor(self):
         """
-        Gönderilecek mesajı oluşturur
-        Format: name,velocity,position(x,y,z),orientation(x,y,z),timestamp
+        Mesaj kuyruğundan mesajları işleyen thread fonksiyonu.
         """
-        return f"{self.drone_name},0.5,0,0,0,0,0,0,{int(time.time())}"
+        while not self.queue_stop_event.is_set():
+            if self.recent_messages.empty():
+                time.sleep(0.1)
+                continue
+            message = self.recent_messages.get(timeout=0.5)
+            message_data = message.data.decode('utf-8', errors='replace')
+            logging.info(f"Mesaj işleniyor: {message_data}")
+            self.message_received_callback(message)
+            logging.info("Callback çağrıldı.")
+            self.recent_messages.task_done()
     
-    def data_receive_callback(self, xbee_message):
+    def default_message_received_callback(self, message):
         """
-        XBee'den gelen mesajları işleyen callback fonksiyonu
+        Xbee'den gelen mesajları işleyen callback fonksiyonu.
         """
         try:
-            data = xbee_message.data.decode('utf-8')
-            fields = data.split(',')
-            logger.info(f"📩 Gelen mesaj: {fields}")
-        except Exception as e:
-            logger.warning(f"📩 Gelen mesaj (ham): {xbee_message.data} (Hata: {e})")
-            fields = xbee_message.data
-        
-        with self.queue_lock:
-            self.signal_queue.append((time.time(), 'IN', fields))
-    
-    def send_data_periodically(self):
-        """
-        Periyodik olarak veri gönderen thread fonksiyonu
-        """
-        if self.remote_node_id:
+            message_data = message.data.decode('utf-8', errors='replace')
+            logging.info(f"Mesaj alındı: {message_data}")
             try:
-                self.remote_device_cache = self.device.get_network().discover_device(self.remote_node_id)
-                if self.remote_device_cache:
-                    logger.info(f"🎯 Uzak cihaz bulundu: {self.remote_device_cache.get_64bit_addr()}")
-                else:
-                    logger.warning("⚠️ Uzak cihaz bulunamadı, broadcast ile gönderilecek.")
-            except Exception as e:
-                logger.error(f"Cihaz bulma hatası: {e}")
-        
-        while self.is_running and self.device.is_open():
-            try:
-                msg = self.get_message()
-                if self.remote_device_cache:
-                    self.device.send_data(self.remote_device_cache, msg)
-                    logger.debug("✅ Mesaj gönderildi.")
-                else:
-                    self.device.send_data_broadcast(msg)
-                    logger.debug("📡 Broadcast ile mesaj gönderildi.")
-                
-                with self.queue_lock:
-                    self.signal_queue.append((time.time(), 'OUT', msg))
-            except Exception as e:
-                logger.error(f"Gönderim hatası: {e}")
-            
-            time.sleep(self.send_interval)
-    
-    def queue_cleaner(self):
-        """
-        Eski mesajları kuyruktan temizleyen thread fonksiyonu
-        """
-        while self.is_running:
-            now = time.time()
-            with self.queue_lock:
-                while self.signal_queue and now - self.signal_queue[0][0] > self.queue_retention:
-                    self.signal_queue.popleft()
-            time.sleep(1)
-    
-    def start(self):
-        """
-        XBee iletişimini başlatır
-        """
-        try:
-            self.device.open()
-            logger.info("📡 XBee cihazı açıldı, dinleniyor ve gönderiyor...")
-            self.device.add_data_received_callback(self.data_receive_callback)
-            
-            self.is_running = True
-            
-            # Thread'leri başlat
-            self.sender_thread = threading.Thread(target=self.send_data_periodically, daemon=True)
-            self.sender_thread.start()
-            
-            self.cleaner_thread = threading.Thread(target=self.queue_cleaner, daemon=True)
-            self.cleaner_thread.start()
-            
-            logger.info("XBee Controller başarıyla başlatıldı.")
-            return True
-            
+                self.recent_messages.put_nowait(message)
+                logging.info("Mesaj kuyruğa eklendi")
+            except Full:
+                logging.error(f"Mesaj kuyruğa eklenemedi, kuyruk dolu.")
+                # Kuyruk doluysa en eski mesajı sil ve yeni mesajı ekle
+                logging.info("En eski mesaj siliniyor ve yeni mesaj ekleniyor.")
+                self.recent_messages.get_nowait()
+                self.recent_messages.put_nowait(message)
         except Exception as e:
-            logger.error(f"XBee Controller başlatılamadı: {e}")
-            return False
+            logging.error(f"Mesaj işlenirken hata oluştu: {e}")
     
-    def stop(self):
+    def listen(self):
         """
-        XBee iletişimini durdurur
-        """
-        self.is_running = False
-        
-        if self.device.is_open():
-            self.device.close()
-            logger.info("🔌 XBee bağlantısı kapatıldı.")
-        
-        logger.info("XBee Controller durduruldu.")
-    
-    def get_signal_queue(self):
-        """
-        Sinyal kuyruğunun bir kopyasını döndürür
-        """
-        with self.queue_lock:
-            return list(self.signal_queue)
-    
-    def is_connected(self):
-        """
-        XBee cihazının bağlı olup olmadığını kontrol eder
-        """
-        return self.device.is_open() if self.device else False
-    
-    def send_custom_message(self, message):
-        """
-        Özel bir mesaj gönderir
+        Xbee mesajlarını dinler ve mesaj gelince callback fonksiyonunu çağırır.
         """
         try:
             if not self.device.is_open():
-                logger.error("XBee cihazı açık değil.")
-                return False
-            
-            if self.remote_device_cache:
-                self.device.send_data(self.remote_device_cache, message)
-            else:
-                self.device.send_data_broadcast(message)
-            
-            with self.queue_lock:
-                self.signal_queue.append((time.time(), 'OUT', message))
-            
-            logger.info(f"Özel mesaj gönderildi: {message}")
-            return True
-            
+                self.device.open()
+            self.device.add_data_received_callback(self.default_message_received_callback)
+            logging.info("XBee dinleniyor...")
         except Exception as e:
-            logger.error(f"Özel mesaj gönderilemedi: {e}")
+            logging.error(f"XBee açılamadı: {e}")
+            raise
+    
+    def construct_message(self, data):
+        """
+        Verilen mesajı JSON formatına çevirir.
+        """
+        message = {
+            "uuid": self.uuid,
+            "data": data,
+            "timestamp": int(time.time()*1000)
+        }
+        logging.debug(f"Mesaj yapılandırıldı.")
+        return json.dumps(message, ensure_ascii=False)
+    
+    @check_connected
+    def send_broadcast_message(self, data):
+        """
+        Xbee üzerinden veri yayınlar (broadcast eder).
+        """
+        try:
+            message = self.construct_message(data)
+            self.device.send_data_broadcast(message)
+            logging.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: Broadcast")
+            return True
+        except Exception as e:
+            logging.error(f"Mesaj gönderilemedi: {e}")
             return False
-
-
-def main():
-    """
-    Örnek kullanım
-    """
-    # XBee Controller'ı oluştur
-    xbee_controller = XBeeController(
-        port="/dev/ttyUSB0",
-        baud_rate=57600,
-        send_interval=0.1,
-        queue_retention=10,
-        remote_node_id="REMOTE",  # None yaparsanız sadece broadcast yapar
-        drone_name="drone2"
-    )
     
-    try:
-        # Controller'ı başlat
-        if xbee_controller.start():
-            logger.info("XBee Controller başlatıldı. Çıkmak için Enter'a basın...")
-            input()
+    @check_connected
+    def send_private_message(self, receiver, data):
+        """
+        Xbee üzerinden bir alıcıya veri gönderir.
+        """
+        message = self.construct_message(data)
+        try:
+            self.device.send_data(receiver, message)
+            logging.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: {receiver}")
+            return True
+        except Exception as e:
+            logging.error(f"Mesaj gönderilemedi: {e}")
+            return False
+    
+    def close(self):
+        """
+        XBee cihazını kapatır ve mesaj kuyruğu işleme thread'ini durdurur.
+        """
+        if self.device.is_open():
+            self.device.close()
+            logging.info("XBee kapatıldı.")
+            self.stop_event.set()
+            logging.info("Mesaj kuyruğu işleme thread'i durduruldu.")
         else:
-            logger.error("XBee Controller başlatılamadı!")
-    
-    except KeyboardInterrupt:
-        logger.info("Kullanıcı tarafından durduruldu.")
-    
-    finally:
-        xbee_controller.stop()
-
+            logging.warning("XBee zaten kapalı.")
+            
 
 if __name__ == "__main__":
-    main()
+    # Örnek kullanım
+    def message_received_callback(message):
+        print(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
+
+    xbee = XBeeController(uuid="12345", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+    xbee.listen()
+    
+    # Mesaj gönderme örneği
+    xbee.send_broadcast_message({"test": "Hello, XBee!"})
+    
+    # Uygulama kapatılırken XBee cihazını kapat
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        xbee.close()
