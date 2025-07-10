@@ -130,17 +130,15 @@ class MAVSDKController:
         """
         try:
             async for health in self.drone.telemetry.health():
-                return {
-                    "kalibrasyon": {
-                        "manyetik": health.is_magnetometer_calibration_ok,
-                        "ivmeölçer": health.is_accelerometer_calibration_ok,
-                        "jiroskop": health.is_gyrometer_calibration_ok,
-                        "gps": health.is_global_position_ok
-                    },
-                    "sistem": {
-                        "armable": health.is_armable,
-                    }
-                }
+                if health.is_magnetometer_calibration_ok and \
+                   health.is_accelerometer_calibration_ok and \
+                   health.is_gyrometer_calibration_ok and \
+                   health.is_global_position_ok:
+                    logger.info("Drone kalibrasyon bilgileri başarılı.")
+                    return True
+                else:
+                    logger.warning("Drone kalibrasyon bilgileri başarısız, lütfen kontrol edin.")
+                    return False
         except Exception as e:
             logger.error(f"Sağlık bilgisi alınırken hata: {e}")
             return None

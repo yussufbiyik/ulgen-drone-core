@@ -1,3 +1,9 @@
+import os
+import sys 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
 import threading
 import time
 import logging
@@ -5,10 +11,18 @@ from collections import deque
 from digi.xbee.devices import XBeeDevice
 
 # Logging configuration
+log_name = "./logs/XBeeController.log"
+os.makedirs("./logs", exist_ok=True)
+
+logger = logging.getLogger("XBeeController")
+sh = logging.StreamHandler()
+sh.setLevel(logging.INFO)
+fh = logging.FileHandler(log_name, mode='w')
+fh.setLevel(logging.DEBUG)
 logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s | %(levelname)s] %(message)s'
-)
+        format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
+        handlers=[fh, sh]
+    )
 
 class XBeeController:
     def __init__(self, port="/dev/ttyUSB0", baud_rate=57600, send_interval=0.1, queue_retention=10, remote_node_id="REMOTE", drone_name="drone2"):
@@ -39,7 +53,7 @@ class XBeeController:
         self.cleaner_thread = None
         self.is_running = False
         
-        logging.info(f"XBeeController oluşturuldu - Port: {port}, Baud: {baud_rate}")
+        logger.info(f"XBeeController oluşturuldu - Port: {port}, Baud: {baud_rate}")
     
     def get_message(self):
         """
@@ -55,9 +69,9 @@ class XBeeController:
         try:
             data = xbee_message.data.decode('utf-8')
             fields = data.split(',')
-            logging.info(f"📩 Gelen mesaj: {fields}")
+            logger.info(f"📩 Gelen mesaj: {fields}")
         except Exception as e:
-            logging.warning(f"📩 Gelen mesaj (ham): {xbee_message.data} (Hata: {e})")
+            logger.warning(f"📩 Gelen mesaj (ham): {xbee_message.data} (Hata: {e})")
             fields = xbee_message.data
         
         with self.queue_lock:
@@ -71,26 +85,26 @@ class XBeeController:
             try:
                 self.remote_device_cache = self.device.get_network().discover_device(self.remote_node_id)
                 if self.remote_device_cache:
-                    logging.info(f"🎯 Uzak cihaz bulundu: {self.remote_device_cache.get_64bit_addr()}")
+                    logger.info(f"🎯 Uzak cihaz bulundu: {self.remote_device_cache.get_64bit_addr()}")
                 else:
-                    logging.warning("⚠️ Uzak cihaz bulunamadı, broadcast ile gönderilecek.")
+                    logger.warning("⚠️ Uzak cihaz bulunamadı, broadcast ile gönderilecek.")
             except Exception as e:
-                logging.error(f"Cihaz bulma hatası: {e}")
+                logger.error(f"Cihaz bulma hatası: {e}")
         
         while self.is_running and self.device.is_open():
             try:
                 msg = self.get_message()
                 if self.remote_device_cache:
                     self.device.send_data(self.remote_device_cache, msg)
-                    logging.debug("✅ Mesaj gönderildi.")
+                    logger.debug("✅ Mesaj gönderildi.")
                 else:
                     self.device.send_data_broadcast(msg)
-                    logging.debug("📡 Broadcast ile mesaj gönderildi.")
+                    logger.debug("📡 Broadcast ile mesaj gönderildi.")
                 
                 with self.queue_lock:
                     self.signal_queue.append((time.time(), 'OUT', msg))
             except Exception as e:
-                logging.error(f"Gönderim hatası: {e}")
+                logger.error(f"Gönderim hatası: {e}")
             
             time.sleep(self.send_interval)
     
@@ -111,7 +125,7 @@ class XBeeController:
         """
         try:
             self.device.open()
-            logging.info("📡 XBee cihazı açıldı, dinleniyor ve gönderiyor...")
+            logger.info("📡 XBee cihazı açıldı, dinleniyor ve gönderiyor...")
             self.device.add_data_received_callback(self.data_receive_callback)
             
             self.is_running = True
@@ -123,11 +137,11 @@ class XBeeController:
             self.cleaner_thread = threading.Thread(target=self.queue_cleaner, daemon=True)
             self.cleaner_thread.start()
             
-            logging.info("XBee Controller başarıyla başlatıldı.")
+            logger.info("XBee Controller başarıyla başlatıldı.")
             return True
             
         except Exception as e:
-            logging.error(f"XBee Controller başlatılamadı: {e}")
+            logger.error(f"XBee Controller başlatılamadı: {e}")
             return False
     
     def stop(self):
@@ -138,9 +152,9 @@ class XBeeController:
         
         if self.device.is_open():
             self.device.close()
-            logging.info("🔌 XBee bağlantısı kapatıldı.")
+            logger.info("🔌 XBee bağlantısı kapatıldı.")
         
-        logging.info("XBee Controller durduruldu.")
+        logger.info("XBee Controller durduruldu.")
     
     def get_signal_queue(self):
         """
@@ -161,7 +175,7 @@ class XBeeController:
         """
         try:
             if not self.device.is_open():
-                logging.error("XBee cihazı açık değil.")
+                logger.error("XBee cihazı açık değil.")
                 return False
             
             if self.remote_device_cache:
@@ -172,11 +186,11 @@ class XBeeController:
             with self.queue_lock:
                 self.signal_queue.append((time.time(), 'OUT', message))
             
-            logging.info(f"Özel mesaj gönderildi: {message}")
+            logger.info(f"Özel mesaj gönderildi: {message}")
             return True
             
         except Exception as e:
-            logging.error(f"Özel mesaj gönderilemedi: {e}")
+            logger.error(f"Özel mesaj gönderilemedi: {e}")
             return False
 
 
@@ -197,13 +211,13 @@ def main():
     try:
         # Controller'ı başlat
         if xbee_controller.start():
-            print("XBee Controller başlatıldı. Çıkmak için Enter'a basın...")
+            logger.info("XBee Controller başlatıldı. Çıkmak için Enter'a basın...")
             input()
         else:
-            print("XBee Controller başlatılamadı!")
+            logger.error("XBee Controller başlatılamadı!")
     
     except KeyboardInterrupt:
-        logging.info("Kullanıcı tarafından durduruldu.")
+        logger.info("Kullanıcı tarafından durduruldu.")
     
     finally:
         xbee_controller.stop()
