@@ -1,10 +1,14 @@
 import os
+import sys 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
 import time
 import uuid
 import asyncio
 import numpy as np
 import json
-import threading
 import logging
 
 from utils import pid
@@ -25,40 +29,51 @@ logging.basicConfig(
         handlers=[fh, sh]
     )
 
-def broadcast_drone_status(XBeeController, MAVSDKController):
+async def broadcast_drone_status(XBeeController, MAVSDKController):
     """
-    Dron durumunu yayınlayan fonksiyon.
+    Bu fonksiyon, dronun genel durumunu alır ve XBee üzerinden broadcast eder
+
+    param XBeeController: XBee kontrolcüsü
+    param MAVSDKController: MAVSDK kontrolcüsü
+
     """
     while True:
-        data = MAVSDKController.get_all()
+        data = await MAVSDKController.get_general_info()
         message = XBeeController.construct_message(data)
         XBeeController.send_broadcast_message(message)
         logging.info(f"Güncel durum broadcast edildi: {message}")
-        time.sleep(5)  # Her 5 saniyede bir güncelleme yap
+        await asyncio.sleep(1)  # Her saniyede bir güncel durumu broadcast et
 
 def handle_message_received(message):
     """
     XBee'den gelen mesajları işleyen callback fonksiyonu.
+
+    :param message: XBee'den alınan mesaj
     """
     logging.info(f"Başka bir XBee'den mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
     return NotImplemented
 
 class DroneController:
-    def __init__(self):
+    def __init__(self, xbee_port):
         self.uuid = str(uuid.uuid4())
         
         # Kontrolcüler
         self.pid = pid.PID()
         self.apf = apf.APF()
         
-        # self.XBeeController = xbee_controller.XBeeController(self.uuid, "PORT", message_received_callback=handle_message_received)
-        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.uuid)
+        if __name__ != "__main__":
+            # XBeeController test harici durumlarda başlatılır
+            self.XBeeController = xbee_controller.XBeeController(
+                port=xbee_port,
+                handle_message_received=handle_message_received,
+                uuid=self.uuid
+            )
+            self.XBeeController.listen()
+            asyncio.create_task(broadcast_drone_status(self.XBeeController, self.MAVSDKController))
+        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.uuid, system_address="udpin://0.0.0.0:14542")
         
         # Temel Özellikler
         self.relative_position = np.array([0.0, 0.0, 0.0])
-        
-        # Rutin operasyonlar
-        # threading.Thread(target=broadcast_drone_status(self.XBeeController, self.MAVSDKController), daemon=True).start()
 
     async def arm(self):
         """
@@ -104,14 +119,18 @@ class DroneController:
     def send_velocity_command(self, velocity): 
         """
         Hız komutu gönder
+
+        :param velocity: Hız vektörü (x, y, z)
         """
-        return NotImplemented
-    
+        self.MAVSDKController.drone.offboard.set_velocity_ned(velocity)
+
+
 async def main():
     """
-    DroneController temel işlemlerini gerçekleştirir.
+    DroneController temel işlemlerini test eden ana fonksiyon.
+    Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
-    drone_controller = DroneController()
+    drone_controller = DroneController(xbee_port=None)  # XBee portu None olarak ayarlandı, zaten test için kullanılmayacak
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
         logging.info(drone_controller.MAVSDKController.is_connected)
