@@ -16,6 +16,21 @@ from digi.xbee.devices import XBeeDevice
 # Logging configuration
 log_name = "./logs/XBeeController.log"
 
+# {
+#   "id": 12345,
+#   "st": {
+#     "ab":1,
+#     "a": 1,
+#     "f_mode": 3,
+#     "b": 50,
+#     "gps": {
+#       "la": 47.397971299999995,
+#       "lo": 8.5461633,
+#       "al": 5.200000286102295
+#     }
+#   }
+# }
+
 logger = logging.getLogger("XBeeController")
 sh = logging.StreamHandler()
 sh.setLevel(logging.INFO)
