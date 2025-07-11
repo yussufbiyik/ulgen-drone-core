@@ -33,17 +33,14 @@ class MAVSDKController:
         self.connection_timeout = connection_timeout
         self.is_connected = False
         self.general_status = {
-            "uuid": uuid,
-            "status": {
-                "health": None,
-                "armed": None,
-                "flight_mode": None,
-                "battery": None,
-                "gps_info": None,
-                "gps_position": None,
-                "attitude": None,
-                "velocity": None,
-            }
+            "health": None,
+            "armed": None,
+            "flight_mode": None,
+            "battery": None,
+            "gps_info": None,
+            "gps_position": None,
+            "attitude": None,
+            "velocity": None,
         }
     
     async def wait_for_connection(self):
@@ -100,20 +97,19 @@ class MAVSDKController:
                     self.get_velocity()
                 )
 
-                self.general_status["status"]["health"] = health
-                self.general_status["status"]["armed"] = is_armed
-                self.general_status["status"]["flight_mode"] = flight_mode
-                self.general_status["status"]["battery"] = battery
-                self.general_status["status"]["gps_info"] = gps_info
-                self.general_status["status"]["gps_position"] = gps_position
-                self.general_status["status"]["attitude"] = attitude
-                self.general_status["status"]["velocity"] = velocity
+                self.general_status["health"] = health
+                self.general_status["armed"] = is_armed
+                self.general_status["flight_mode"] = flight_mode
+                self.general_status["battery"] = battery
+                self.general_status["gps_info"] = gps_info
+                self.general_status["gps_position"] = gps_position
+                self.general_status["attitude"] = attitude
+                self.general_status["velocity"] = velocity
 
                 status_json = json.dumps(self.general_status, indent=2, ensure_ascii=False)
                 logger.debug(f"Tüm parametreler güncellendi, parametrelerin son durumu:\n\t\t{status_json}")
             except Exception as e:
                 logger.error(f"Drone bilgileri güncellenirken hata: {e}")
-                return None
             await asyncio.sleep(0.5)
     
     @check_connected
@@ -165,7 +161,7 @@ class MAVSDKController:
         """
         try:
             async for mode in self.drone.telemetry.flight_mode():
-                return mode.name
+                return mode.value
         except asyncio.TimeoutError:
             logger.error("Drone durumu alınırken zaman aşımına uğradı.")
             return None

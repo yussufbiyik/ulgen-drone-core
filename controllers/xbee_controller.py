@@ -17,21 +17,6 @@ from digi.xbee.exception import XBeeException, TransmitException, TimeoutExcepti
 # Logging configuration
 log_name = "./logs/XBeeController.log"
 
-# {
-#   "id": 12345,
-#   "st": {
-#     "ab":1,
-#     "a": 1,
-#     "f_mode": 3,
-#     "b": 50,
-#     "gps": {
-#       "la": 47.397971299999995,
-#       "lo": 8.5461633,
-#       "al": 5.200000286102295
-#     }
-#   }
-# }
-
 logger = logging.getLogger("XBeeController")
 sh = logging.StreamHandler()
 sh.setLevel(logging.INFO)
@@ -39,7 +24,7 @@ fh = logging.FileHandler(log_name, mode='w')
 fh.setLevel(logging.DEBUG)
 logging.basicConfig(
         format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
-    level=logging.DEBUG,  # Genel log seviyesi DEBUG olarak ayarlandı
+        level=logging.DEBUG,
         handlers=[fh, sh]
     )
 
@@ -53,11 +38,11 @@ def check_connected(func):
     return wrapper
 
 class XBeeController:
-    def __init__(self, uuid, port, message_received_callback, baudrate=57600, max_queue_size=20):
-        self.uuid = uuid
+    def __init__(self, message_received_callback, port="/dev/ttyUSB0", baudrate=57600, max_queue_size=20):
         self.port = port
         self.baudrate = baudrate
         self.device = XBeeDevice(port, baudrate)
+        self.address = self.device.get_64bit_addr()
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
@@ -163,14 +148,17 @@ class XBeeController:
         return json.dumps(message, ensure_ascii=False).replace("\n", "").replace(" ", "").encode('utf-8')
     
     @check_connected
-    def send_broadcast_message(self, data):
+    def send_broadcast_message(self, data, construct_message=False):
         """
         Xbee üzerinden veri yayınlar (broadcast eder).
         """
         try:
-            message = self.construct_message(data)
+            if construct_message:
+                message = self.construct_message(data)
+            else:
+                message = data
             logger.debug(f"Broadcast mesajı yapılandırıldı: {message}")
-            self.device.send_data_broadcast(data)
+            self.device.send_data_broadcast(message)
             logger.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: Broadcast")
             return True
         except XBeeException as e:
@@ -217,29 +205,13 @@ if __name__ == "__main__":
     # Örnek kullanım
     def message_received_callback(message):
         logger.info(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
-
     xbee = XBeeController(uuid="123", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
     xbee.listen()
-    
     # Uygulama kapatılırken XBee cihazını kapat
     try:
         while True:
             # Mesaj gönderme örneği
-            xbee.send_broadcast_message("123,1,1,3,50,47.397971299999995,8.5461633,5.200000286102295")
-            # xbee.send_broadcast_message({
-            #     "d": {
-            #         "ab":1,
-            #         "a": 1,
-            #         "fm": 3,
-            #         "b": 50,
-            #         "gps": 
-            #             {
-            #                 "la": 47.397971299999995,
-            #                 "lo": 8.5461633,
-            #                 "al": 5.200000286102295
-            #             }
-            #     }
-            # })
+            xbee.send_broadcast_message("1,1,3,50,47.397971299999995,8.5461633,5.200000286102295")
             time.sleep(15)
     except KeyboardInterrupt:
         xbee.close()
