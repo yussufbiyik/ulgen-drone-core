@@ -140,7 +140,7 @@ class XBeeController:
         Verilen mesajı JSON formatına çevirir.
         """
         message = {
-            "i": self.uuid,
+            "i": self.address,
             "d": data,
             "t": int(time.time()*1000)
         }
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     # Örnek kullanım
     def message_received_callback(message):
         logger.info(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
-    xbee = XBeeController(uuid="123", port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+    xbee = XBeeController(port="/dev/ttyUSB0", message_received_callback=message_received_callback)
     xbee.listen()
     # Uygulama kapatılırken XBee cihazını kapat
     try:
