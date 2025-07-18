@@ -36,15 +36,6 @@ def format_broadcast_message(message):
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
-def handle_message_received(message):
-    """
-    XBee'den gelen mesajları işleyen callback fonksiyonu.
-
-    :param message: XBee'den alınan mesaj
-    """
-    logging.info(f"f{message.sender} adresinden mesaj alındı: {message.data}")
-    return NotImplemented
-
 class DroneController:
     def __init__(self, xbee_port):
         # Kontrolcüler
@@ -55,7 +46,7 @@ class DroneController:
             logging.info(f"XBee portu: {xbee_port} olarak ayarlandı.")
             self.XBeeController = xbee_controller.XBeeController(
                 port=xbee_port,
-                message_received_callback=handle_message_received
+                message_received_callback=self.handle_message_received
             )
             self.XBeeController.listen()
             logging.info("XBeeController başlatıldı.")
@@ -66,6 +57,44 @@ class DroneController:
         self.neighbors = []
 
     
+    def handle_message_received(self, message):
+        """
+        XBee'den gelen mesajları işleyen callback fonksiyonu.
+
+        :param message: XBee'den alınan mesaj
+        """
+        # Örnek data
+        # 1,1,6,50,47.3977058,8.5460053,1.3350,-0.03999999910593033,0.0,0.6800000071525574
+        # 47.3977058,8.5460053,1.3350
+        if message.sender not in self.neighbors:
+            message_data = message.data.split(',')
+            if len(message_data) < 10:
+                logging.error(f"Beklenmeyen mesaj formatı: {message.data}")
+                return NotImplemented
+            message_data = {
+                "sender": message.sender,
+                "timestamp": message.timestamp,
+                "data": {
+                    "armable": bool(int(message_data[0])),
+                    "armed": bool(int(message_data[1])),
+                    "flight_mode": int(message_data[2]),
+                    "battery": int(message_data[3]),
+                    "gps_position": {
+                        "latitude": float(message_data[4]),
+                        "longitude": float(message_data[5]),
+                        "altitude": float(message_data[6])
+                    },
+                    "velocity": {
+                        "north": float(message_data[7]),
+                        "east": float(message_data[8]),
+                        "down": float(message_data[9])
+                    }
+                }
+            }
+            self.neighbors.append(message_data)
+            logging.info(f"Yeni komşu eklendi: {message.sender}.\nKomşu ile aradaki gecikme: {message.timestamp - time.time()} saniye.")
+        return NotImplemented
+
     async def broadcast_drone_status(self):
         """
         Bu fonksiyon, dronun genel durumunu alır ve XBee üzerinden broadcast eder
@@ -178,7 +207,7 @@ async def main():
     target_location = {
         "latitude_deg": 47.3977048298953,
         "longitude_deg": 8.546004976196247,
-        "altitude_m": 5,
+        "altitude_m": 10,
     }
     await drone_controller.drone.action.goto_location(
         target_location["latitude_deg"],
@@ -210,5 +239,5 @@ async def main():
     logging.info("DroneController işlemleri tamamlandı.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
     logging.info("DroneController başlatıldı.")
+    asyncio.run(main())
