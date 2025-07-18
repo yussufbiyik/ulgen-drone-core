@@ -37,7 +37,7 @@ def format_broadcast_message(message):
     return new_message
 
 class DroneController:
-    def __init__(self, xbee_port):
+    def __init__(self, xbee_port, mavsdk_port="udpin://0.0.0.0:14540"):
         # Kontrolcüler
         self.pid = pid.PID()      
         self.apf = apf.APF()
@@ -52,12 +52,12 @@ class DroneController:
             logging.info("XBeeController başlatıldı.")
             asyncio.create_task(self.broadcast_drone_status())
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
-        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.xbee_id, system_address="udpin://0.0.0.0:14540")
+        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.xbee_id, system_address=mavsdk_port)
         self.drone = self.MAVSDKController.drone
         self.neighbors = []
 
     
-    def handle_message_received(self, message):
+    def handle_message_received(self, recieved_message):
         """
         XBee'den gelen mesajları işleyen callback fonksiyonu.
 
@@ -66,34 +66,33 @@ class DroneController:
         # Örnek data
         # 1,1,6,50,47.3977058,8.5460053,1.3350,-0.03999999910593033,0.0,0.6800000071525574
         # 47.3977058,8.5460053,1.3350
-        if message.sender not in self.neighbors:
-            message_data = message.data.split(',')
-            if len(message_data) < 10:
-                logging.error(f"Beklenmeyen mesaj formatı: {message.data}")
-                return NotImplemented
+        if recieved_message.sender not in self.neighbors:
+            message_raw = recieved_message.data.split(',')
+            if len(message_raw) < 10:
+                logging.error(f"Beklenmeyen mesaj formatı: {recieved_message.data}")
+                return
             message_data = {
-                "sender": message.sender,
-                "timestamp": message.timestamp,
+                "sender": recieved_message.sender,
+                "timestamp": recieved_message.timestamp,
                 "data": {
-                    "armable": bool(int(message_data[0])),
-                    "armed": bool(int(message_data[1])),
-                    "flight_mode": int(message_data[2]),
-                    "battery": int(message_data[3]),
+                    "armable": bool(int(message_raw[0])),
+                    "armed": bool(int(message_raw[1])),
+                    "flight_mode": int(message_raw[2]),
+                    "battery": int(message_raw[3]),
                     "gps_position": {
-                        "latitude": float(message_data[4]),
-                        "longitude": float(message_data[5]),
-                        "altitude": float(message_data[6])
+                        "latitude": float(message_raw[4]),
+                        "longitude": float(message_raw[5]),
+                        "altitude": float(message_raw[6])
                     },
                     "velocity": {
-                        "north": float(message_data[7]),
-                        "east": float(message_data[8]),
-                        "down": float(message_data[9])
+                        "north": float(message_raw[7]),
+                        "east": float(message_raw[8]),
+                        "down": float(message_raw[9])
                     }
                 }
             }
             self.neighbors.append(message_data)
-            logging.info(f"Yeni komşu eklendi: {message.sender}.\nKomşu ile aradaki gecikme: {message.timestamp - time.time()} saniye.")
-        return NotImplemented
+            logging.info(f"Yeni komşu eklendi: {recieved_message.sender}.\nKomşu ile aradaki gecikme: {recieved_message.timestamp - time.time()} saniye.")
 
     async def broadcast_drone_status(self):
         """
@@ -173,7 +172,10 @@ async def main():
     DroneController temel işlemlerini test eden ana fonksiyon.
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
-    drone_controller = DroneController(xbee_port="/dev/ttyUSB0")  # XBee portunu uygun şekilde ayarlayın
+    drone_controller = DroneController(
+            xbee_port="/dev/ttyUSB0", 
+            mavsdk_port="serial:///dev/ttyACM0:115200"
+        )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
         logging.info(drone_controller.MAVSDKController.is_connected)
@@ -184,6 +186,9 @@ async def main():
     target_altitude = 10
     await drone_controller.arm()
     logging.debug("arm() komutu verildi.")
+    await asyncio.sleep(10)
+    await drone_controller.drone.action.set_current_speed(1.0)  # Hızı 1 m/sn olarak ayarla
+    logging.info("Hız 1m/sn ayarlandı.")
     while True:
         _general_info = await drone_controller.MAVSDKController.get_general_info()
         _gps_position = _general_info["gps_position"]
@@ -205,8 +210,8 @@ async def main():
         await asyncio.sleep(1)
     # Waypoint'e ilerle
     target_location = {
-        "latitude_deg": 47.3977048298953,
-        "longitude_deg": 8.546004976196247,
+        "latitude_deg": 40.325757,
+        "longitude_deg": 36.473615,
         "altitude_m": 10,
     }
     await drone_controller.drone.action.goto_location(

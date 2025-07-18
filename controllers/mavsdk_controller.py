@@ -272,7 +272,7 @@ async def main():
     - Log kayıtları dosyasına ve konsola yazılır.
     - Main kapanana kadar devam eder.
     """
-    controller = MAVSDKController("22",system_address="udpin://0.0.0.0:14540")
+    controller = MAVSDKController("22",system_address="serial:///dev/ttyUSB0:115200")
     await controller.connect()
     if controller.is_connected:
         while True:
