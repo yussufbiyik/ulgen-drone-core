@@ -17,18 +17,6 @@ from utils.collision_avoidance import apf
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
-log_name = "./logs/DroneController.log"
-os.makedirs("./logs", exist_ok=True)
-
-sh = logging.StreamHandler()
-sh.setLevel(logging.INFO)
-fh = logging.FileHandler(log_name, mode='w')
-fh.setLevel(logging.DEBUG)
-logging.basicConfig(
-        format='[%(asctime)s | %(levelname)s]\n\t⤷ %(message)s',
-        handlers=[fh, sh]
-    )
-
 def format_broadcast_message(message):
     """
     Mesajı kompakt formda broadcast'e uygun şekilde hazırlar.
@@ -154,7 +142,7 @@ async def main():
     DroneController temel işlemlerini test eden ana fonksiyon.
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
-    drone_controller = DroneController(xbee_port="/dev/ttyUSB0")  # XBee portunu uygun şekilde ayarlayın
+    drone_controller = DroneController(xbee_port=None)  # XBee portunu uygun şekilde ayarlayın
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
         logging.info(drone_controller.MAVSDKController.is_connected)
