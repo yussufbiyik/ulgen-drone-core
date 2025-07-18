@@ -14,6 +14,7 @@ def check_connected(func):
         return await func(self, *args, **kwargs)
     return wrapper
 
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
     def __init__(self, uuid, system_address="udpin://0.0.0.0:14540", telemetry_timeout=5, connection_timeout=100):
@@ -268,7 +269,7 @@ async def main():
     - Drone ile bağlantı kurulur.
     - Bağlantı başarısız ise hata mesajı verir ve kapanır.
     - Bağlantı başarılı ise sürekli olarak log kayıtları yapılır.
-    - Log kayıtları ./logs/MAVSDKController.log dosyasına ve konsola yazılır.
+    - Log kayıtları dosyasına ve konsola yazılır.
     - Main kapanana kadar devam eder.
     """
     controller = MAVSDKController("22",system_address="udpin://0.0.0.0:14540")
