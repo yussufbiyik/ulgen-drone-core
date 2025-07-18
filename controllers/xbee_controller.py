@@ -9,10 +9,13 @@ import threading
 import time
 import logging
 import serial
+import pprint
 from queue import Queue, Full
 import functools
 from digi.xbee.devices import XBeeDevice
 from digi.xbee.exception import XBeeException, TransmitException, TimeoutException, InvalidOperatingModeException
+
+pp = pprint.PrettyPrinter(indent=4)
 
 def check_connected(func):
     @functools.wraps(func)
@@ -23,12 +26,14 @@ def check_connected(func):
         return func(self, *args, **kwargs)
     return wrapper
 
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
+
 class XBeeController:
     def __init__(self, message_received_callback, port="/dev/ttyUSB0", baudrate=57600, max_queue_size=20):
         self.port = port
         self.baudrate = baudrate
         self.device = XBeeDevice(port, baudrate)
-        self.address = self.device.get_64bit_addr()
+        self.address = self.device.get_16bit_addr()
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
@@ -48,8 +53,7 @@ class XBeeController:
                 time.sleep(0.1)
                 continue
             message = self.recent_messages.get(timeout=0.5)
-            message_data = message.data.decode('utf-8', errors='replace')
-            logging.info(f"Mesaj işleniyor: {message_data}")
+            logging.info(f"Mesaj işleniyor: {message}")
             self.message_received_callback(message)
             logging.info("Callback çağrıldı.")
             self.recent_messages.task_done()
@@ -59,17 +63,23 @@ class XBeeController:
         Xbee'den gelen mesajları işleyen callback fonksiyonu.
         """
         try:
-            message_data = message.data.decode('utf-8', errors='replace')
-            logging.info(f"Mesaj alındı: {message_data}")
+            message_data = message.data.decode('utf-8')
+            message_full = {
+                "sender": message.remote_device.get_16bit_addr().BROADCAST_ADDRESS,
+                "isBroadcast": message.is_broadcast,
+                "data": message_data,
+                "timestamp": message.timestamp
+            }
+            logging.info(f"Mesaj alındı: {message_full}")
             try:
-                self.recent_messages.put_nowait(message)
+                self.recent_messages.put_nowait(message_full)
                 logging.info("Mesaj kuyruğa eklendi")
             except Full:
                 logging.error(f"Mesaj kuyruğa eklenemedi, kuyruk dolu.")
                 # Kuyruk doluysa en eski mesajı sil ve yeni mesajı ekle
                 logging.info("En eski mesaj siliniyor ve yeni mesaj ekleniyor.")
                 self.recent_messages.get_nowait()
-                self.recent_messages.put_nowait(message)
+                self.recent_messages.put_nowait(message_full)
         except Exception as e:
             logging.error(f"Mesaj işlenirken hata oluştu: {e}")
     
@@ -190,14 +200,14 @@ class XBeeController:
 if __name__ == "__main__":
     # Örnek kullanım
     def message_received_callback(message):
-        logging.info(f"Mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
+        logging.info(f"Mesaj alındı: {message}")
     xbee = XBeeController(port="/dev/ttyUSB0", message_received_callback=message_received_callback)
     xbee.listen()
     # Uygulama kapatılırken XBee cihazını kapat
     try:
         while True:
-            # Mesaj gönderme örneği
-            xbee.send_broadcast_message("1,1,3,50,47.397971299999995,8.5461633,5.200000286102295")
+            # Mesaj gönderme örneği (Veri bilerek önceden tanımlandı)
+            # xbee.send_broadcast_message("oto mesaj")
             time.sleep(15)
     except KeyboardInterrupt:
         xbee.close()

@@ -17,6 +17,8 @@ from utils.collision_avoidance import apf
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
+
 def format_broadcast_message(message):
     """
     Mesajı kompakt formda broadcast'e uygun şekilde hazırlar.
@@ -29,8 +31,8 @@ def format_broadcast_message(message):
     flight_mode = message["flight_mode"]
     battery = int(message["battery"])
     gps_string = f"{message['gps_position']['latitude']},{message['gps_position']['longitude']},{format(message['gps_position']['altitude'], '.4f')}"
-    timestamp = int(time.time() * 1000)
-    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string},{timestamp}"
+    velocity = f"{message['velocity']['north']},{message['velocity']['east']},{message['velocity']['down']}"
+    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string},{velocity}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
@@ -40,7 +42,7 @@ def handle_message_received(message):
 
     :param message: XBee'den alınan mesaj
     """
-    logging.info(f"Başka bir XBee'den mesaj alındı: {message.data.decode('utf-8', errors='replace')}")
+    logging.info(f"f{message.sender} adresinden mesaj alındı: {message.data}")
     return NotImplemented
 
 class DroneController:
@@ -50,18 +52,18 @@ class DroneController:
         self.apf = apf.APF()
         
         if xbee_port is not None:
+            logging.info(f"XBee portu: {xbee_port} olarak ayarlandı.")
             self.XBeeController = xbee_controller.XBeeController(
                 port=xbee_port,
                 message_received_callback=handle_message_received
             )
             self.XBeeController.listen()
+            logging.info("XBeeController başlatıldı.")
             asyncio.create_task(self.broadcast_drone_status())
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
         self.MAVSDKController = mavsdk_controller.MAVSDKController(self.xbee_id, system_address="udpin://0.0.0.0:14540")
         self.drone = self.MAVSDKController.drone
-        
-        # Temel Özellikler
-        self.relative_position = np.array([0.0, 0.0, 0.0])
+        self.neighbors = []
 
     
     async def broadcast_drone_status(self):
@@ -85,7 +87,7 @@ class DroneController:
             message = format_broadcast_message(data)
             self.XBeeController.send_broadcast_message(message)
             logging.info(f"Güncel durum broadcast edildi: {message}")
-            await asyncio.sleep(1)  # Her saniyede bir güncel durumu broadcast et
+            await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et
 
     async def arm(self):
         """
@@ -142,7 +144,7 @@ async def main():
     DroneController temel işlemlerini test eden ana fonksiyon.
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
-    drone_controller = DroneController(xbee_port=None)  # XBee portunu uygun şekilde ayarlayın
+    drone_controller = DroneController(xbee_port="/dev/ttyUSB0")  # XBee portunu uygun şekilde ayarlayın
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
         logging.info(drone_controller.MAVSDKController.is_connected)
@@ -150,7 +152,7 @@ async def main():
         await asyncio.sleep(1)
     
     # Örnek kullanım
-    target_altitude = 5
+    target_altitude = 10
     await drone_controller.arm()
     logging.debug("arm() komutu verildi.")
     while True:
@@ -172,7 +174,29 @@ async def main():
             logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı, land() komutu veriliyor.")
             break
         await asyncio.sleep(1)
-    # İniş yap
+    # Waypoint'e ilerle
+    target_location = {
+        "latitude_deg": 47.3977048298953,
+        "longitude_deg": 8.546004976196247,
+        "altitude_m": 5,
+    }
+    await drone_controller.drone.action.goto_location(
+        target_location["latitude_deg"],
+        target_location["longitude_deg"],
+        target_location["altitude_m"],
+        2,  # Yön açısı (yaw) 0 olarak ayarlandı
+    )
+    while True:
+        general_info = await drone_controller.MAVSDKController.get_general_info()
+        gps_position = general_info["gps_position"]
+        logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+        if (abs(gps_position["latitude"] - target_location["latitude_deg"]) < 0.0001 and
+            abs(gps_position["longitude"] - target_location["longitude_deg"]) < 0.0001 and
+            abs(gps_position["altitude"] - target_location["altitude_m"]) < 0.2):
+            logging.info("Drone hedef konuma ulaştı.")
+            break
+        await asyncio.sleep(1)
+    # İniş yapar
     await drone_controller.land()
     logging.debug("land() komutu verildi.")
     async for is_in_air in drone_controller.MAVSDKController.drone.telemetry.in_air():
