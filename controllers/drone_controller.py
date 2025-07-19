@@ -16,6 +16,8 @@ from utils.collision_avoidance import apf
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
+from mavsdk.telemetry import Position
+
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 def format_broadcast_message(message):
@@ -103,6 +105,8 @@ class DroneController:
         """
         while True:
             if not self.MAVSDKController.is_connected or not self.XBeeController.device.is_open():
+                logging.info(self.MAVSDKController.is_connected)
+                logging.info(self.XBeeController.device.is_open())
                 logging.warning("MAVSDKController veya XBee henüz bağlı değil, durum broadcast edilemiyor, broadcast beklemede.")
                 await asyncio.sleep(1)
                 continue
@@ -176,7 +180,7 @@ async def main():
     """
     drone_controller = DroneController(
             xbee_port="/dev/ttyUSB0", 
-            # mavsdk_port="serial:///dev/ttyACM0:115200"
+            mavsdk_port="serial:///dev/ttyACM0:115200"
         )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
@@ -188,9 +192,11 @@ async def main():
     target_altitude = 10
     await drone_controller.arm()
     logging.debug("arm() komutu verildi.")
-    await asyncio.sleep(10)
-    await drone_controller.drone.action.set_current_speed(1.0)  # Hızı 1 m/sn olarak ayarla
+    await asyncio.sleep(1)
+    # await drone_controller.drone.action.set_current_speed(1.0)  # Hızı 1 m/sn olarak ayarla
     logging.info("Hız 1m/sn ayarlandı.")
+    # await drone_controller.drone.action_server.set_flight_mode(drone_controller.drone.action_server.FlightMode.OFFBOARD)
+    await drone_controller.takeoff(target_altitude)
     while True:
         _general_info = await drone_controller.MAVSDKController.get_general_info()
         _gps_position = _general_info["gps_position"]
@@ -199,7 +205,6 @@ async def main():
             break
         logging.info("GPS yükseklik bilgisi henüz alınamadı, bekleniyor...")
         await asyncio.sleep(0.5)
-    await drone_controller.takeoff(target_altitude)
     logging.debug("takeoff() komutu verildi.")
     while True:
         general_info = await drone_controller.MAVSDKController.get_general_info()
