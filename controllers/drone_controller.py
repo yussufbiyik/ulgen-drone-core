@@ -5,7 +5,6 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 import time
-import uuid
 import asyncio
 import numpy as np
 import json
@@ -32,7 +31,7 @@ def format_broadcast_message(message):
     battery = int(message["battery"])
     gps_string = f"{message['gps_position']['latitude']},{message['gps_position']['longitude']},{format(message['gps_position']['altitude'], '.4f')}"
     velocity = f"{message['velocity']['north']},{message['velocity']['east']},{message['velocity']['down']}"
-    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string},{velocity}"
+    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
@@ -52,7 +51,7 @@ class DroneController:
             logging.info("XBeeController başlatıldı.")
             asyncio.create_task(self.broadcast_drone_status())
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
-        self.MAVSDKController = mavsdk_controller.MAVSDKController(self.xbee_id, system_address=mavsdk_port)
+        self.MAVSDKController = mavsdk_controller.MAVSDKController(system_address=mavsdk_port)
         self.drone = self.MAVSDKController.drone
         self.neighbors = []
 
@@ -113,7 +112,10 @@ class DroneController:
                 await asyncio.sleep(1)
                 continue
             message = format_broadcast_message(data)
-            self.XBeeController.send_broadcast_message(message)
+            try:
+                self.XBeeController.send_broadcast_message(message)
+            except Exception as e:
+                logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
             logging.info(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et
 
@@ -174,7 +176,7 @@ async def main():
     """
     drone_controller = DroneController(
             xbee_port="/dev/ttyUSB0", 
-            mavsdk_port="serial:///dev/ttyACM0:115200"
+            # mavsdk_port="serial:///dev/ttyACM0:115200"
         )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
@@ -195,7 +197,7 @@ async def main():
         if _gps_position and "altitude" in _gps_position:
             pre_takeoff_altitude = _gps_position["altitude"]
             break
-        logging.info("GPS konum bilgisi henüz alınamadı, bekleniyor...")
+        logging.info("GPS yükseklik bilgisi henüz alınamadı, bekleniyor...")
         await asyncio.sleep(0.5)
     await drone_controller.takeoff(target_altitude)
     logging.debug("takeoff() komutu verildi.")
@@ -218,7 +220,7 @@ async def main():
         target_location["latitude_deg"],
         target_location["longitude_deg"],
         target_location["altitude_m"],
-        2,  # Yön açısı (yaw) 0 olarak ayarlandı
+        0,  # yaw
     )
     while True:
         general_info = await drone_controller.MAVSDKController.get_general_info()

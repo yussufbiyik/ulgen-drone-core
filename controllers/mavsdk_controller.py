@@ -17,9 +17,8 @@ def check_connected(func):
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
-    def __init__(self, uuid, system_address="udpin://0.0.0.0:14540", telemetry_timeout=5, connection_timeout=100):
+    def __init__(self, system_address="udpin://0.0.0.0:14540", telemetry_timeout=5, connection_timeout=100):
         self.drone = System()
-        self.uuid = uuid
         self.connection_url = system_address
         self.telemetry_timeout = telemetry_timeout
         self.connection_timeout = connection_timeout
@@ -272,7 +271,7 @@ async def main():
     - Log kayıtları dosyasına ve konsola yazılır.
     - Main kapanana kadar devam eder.
     """
-    controller = MAVSDKController("22",system_address="serial:///dev/ttyUSB0:115200")
+    controller = MAVSDKController(system_address="serial:///dev/ttyUSB0:115200")
     await controller.connect()
     if controller.is_connected:
         while True:
