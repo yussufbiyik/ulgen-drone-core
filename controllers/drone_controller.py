@@ -16,7 +16,7 @@ from utils.collision_avoidance import apf
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
-from mavsdk.telemetry import Position
+from mavsdk.offboard import OffboardError, VelocityBodyYawspeed
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
@@ -180,7 +180,7 @@ async def main():
     """
     drone_controller = DroneController(
             xbee_port="/dev/ttyUSB0", 
-            mavsdk_port="serial:///dev/ttyACM0:115200"
+            # mavsdk_port="serial:///dev/ttyACM0:115200"
         )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
@@ -193,7 +193,15 @@ async def main():
     await drone_controller.arm()
     logging.debug("arm() komutu verildi.")
     await asyncio.sleep(1)
-    # await drone_controller.drone.action.set_current_speed(1.0)  # Hızı 1 m/sn olarak ayarla
+    await drone_controller.drone.param_server.provide_param_float("MPC_XY_CRUISE", 1.0)
+    # await drone_controller.drone.offboard.set_velocity_body(
+    #     VelocityBodyYawspeed(
+    #         1.0,  # 1 m/s hızla kuzeye hareket
+    #         0.0,  # Doğu yönünde hareket yok
+    #         0.0,  # Aşağı yönünde hareket yok
+    #         0.0  # Yaw hızı yok
+    #     )
+    # )
     logging.info("Hız 1m/sn ayarlandı.")
     # await drone_controller.drone.action_server.set_flight_mode(drone_controller.drone.action_server.FlightMode.OFFBOARD)
     await drone_controller.takeoff(target_altitude)
@@ -216,27 +224,41 @@ async def main():
             break
         await asyncio.sleep(1)
     # Waypoint'e ilerle
-    target_location = {
-        "latitude_deg": 40.325757,
-        "longitude_deg": 36.473615,
-        "altitude_m": 10,
-    }
-    await drone_controller.drone.action.goto_location(
-        target_location["latitude_deg"],
-        target_location["longitude_deg"],
-        target_location["altitude_m"],
-        0,  # yaw
-    )
-    while True:
-        general_info = await drone_controller.MAVSDKController.get_general_info()
-        gps_position = general_info["gps_position"]
-        logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-        if (abs(gps_position["latitude"] - target_location["latitude_deg"]) < 0.0001 and
-            abs(gps_position["longitude"] - target_location["longitude_deg"]) < 0.0001 and
-            abs(gps_position["altitude"] - target_location["altitude_m"]) < 0.2):
-            logging.info("Drone hedef konuma ulaştı.")
-            break
-        await asyncio.sleep(1)
+    target_locations = [
+        {
+            "latitude_deg": 40.325763,
+            "longitude_deg": 36.473505,
+            "altitude_m": 10,
+        },
+        {
+            "latitude_deg": 40.325672,
+            "longitude_deg": 36.43802,
+            "altitude_m": 10,
+        },
+        {
+            "latitude_deg": 40.325460,
+            "longitude_deg": 36.473591,
+            "altitude_m": 10,
+        },
+    ]
+    for target_location in target_locations:
+        await drone_controller.drone.action.goto_location(
+            target_location["latitude_deg"],
+            target_location["longitude_deg"],
+            target_location["altitude_m"],
+            0,  # yaw
+        )
+        while True:
+            general_info = await drone_controller.MAVSDKController.get_general_info()
+            gps_position = general_info["gps_position"]
+            logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+            if (abs(gps_position["latitude"] - target_location["latitude_deg"]) < 0.0001 and
+                abs(gps_position["longitude"] - target_location["longitude_deg"]) < 0.0001 and
+                abs(gps_position["altitude"] - target_location["altitude_m"]) < 0.2):
+                logging.info("Drone hedef konuma ulaştı.")
+                await asyncio.sleep(1)
+                break
+            await asyncio.sleep(1)
     # İniş yapar
     await drone_controller.land()
     logging.debug("land() komutu verildi.")
