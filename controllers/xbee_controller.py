@@ -65,7 +65,7 @@ class XBeeController:
         try:
             message_data = message.data.decode('utf-8')
             message_full = {
-                "sender": message.remote_device.get_16bit_addr().BROADCAST_ADDRESS,
+                "sender": int.from_bytes(message.remote_device.get_16bit_addr().address, "big"),
                 "isBroadcast": message.is_broadcast,
                 "data": message_data,
                 "timestamp": message.timestamp
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     # Örnek kullanım
     def message_received_callback(message):
         logging.info(f"Mesaj alındı: {message}")
-    xbee = XBeeController(port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+    xbee = XBeeController(port="/dev/ttyUSB1", message_received_callback=message_received_callback)
     xbee.listen()
     # Uygulama kapatılırken XBee cihazını kapat
     try:
