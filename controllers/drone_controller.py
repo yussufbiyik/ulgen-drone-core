@@ -199,15 +199,26 @@ async def main():
             xbee_port="/dev/ttyUSB0", 
             mavsdk_port="serial:///dev/ttyACM0:57600"
         )
+    mission_steps= {
+        "arm":False,
+        "takeoff":False,
+        "w1":False,
+        "w2":False,
+        "w3":False,
+        "in":False,
+        "land":False
+    }
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
         logging.info(drone_controller.MAVSDKController.is_connected)
         logging.info("DroneController henüz bağlı değil, bağlanmaya çalışılıyor...")
         await asyncio.sleep(1)
-    
     # Örnek kullanım
     target_altitude = 10
     await drone_controller.arm()
+    mission_steps["arm"] = True
+    while not mission_steps["arm"]:
+        await asyncio.sleep(1)
     logging.debug("arm() komutu verildi.")
     # await drone_controller.drone.action_server.set_flight_mode(drone_controller.drone.action_server.FlightMode.OFFBOARD)
     await drone_controller.takeoff(target_altitude)
@@ -220,6 +231,18 @@ async def main():
             break
         logging.info("GPS yükseklik bilgisi henüz alınamadı, bekleniyor...")
         await asyncio.sleep(0.5)
+    while True:
+        general_info = await drone_controller.MAVSDKController.get_general_info()
+        gps_position = general_info["gps_position"]
+        climbed = gps_position["altitude"] - pre_takeoff_altitude
+        logging.info(f"Drone {climbed} metre yükseldi.")
+        if abs(target_altitude - climbed) <= 0.2:
+            logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı, land() komutu veriliyor.")
+            mission_steps["takeoff"] = True
+            break
+        await asyncio.sleep(1)
+    while not mission_steps["takeoff"]:
+        await asyncio.sleep(1)
     # Waypoint'e ilerle
     target_locations = [
         {
@@ -242,61 +265,62 @@ async def main():
         {
             "latitude": 47.398309,
             "longitude": 8.5408438,
-            "altitude": 10,
+            "altitude": pre_takeoff_altitude+10,
         },
         {
             "latitude": 47.397190,
             "longitude": 8.547258,
-            "altitude": 10,
+            "altitude": pre_takeoff_altitude+10,
         },
         {
             "latitude": 47.397161,
             "longitude": 8.544898,
-            "altitude": 10,
+            "altitude": pre_takeoff_altitude+10,
         },
     ]
-    resp = input("ilerle?")
-    if resp == "e":
-        for target_location in target_locations:
-            logging.info("konum emri verildi.")
-            await drone_controller.drone.action.goto_location(
-                target_location["latitude"],
-                target_location["longitude"],
-                target_location["altitude"],
-                0,  # yaw
-            )
-            resp1 = input("ilerle?")
-            if resp1 == "e":
-                while True:
-                    general_info = await drone_controller.MAVSDKController.get_general_info()
-                    gps_position = general_info["gps_position"]
-                    logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-                    if (calculate_distance(gps_position, target_location) <= 0.5):
-                        logging.info("Drone hedef konuma ulaştı.")
-                        await asyncio.sleep(1)
-                        break
-                    await asyncio.sleep(1)
-    # İniş yapar
-    resp2 = input("in?")
-    if resp2 == "e":
+    for i, target_location in enumerate(target_locations):
+        step_name = f"w{i+1}"
+        logging.info("konum emri verildi.")
+        await drone_controller.drone.action.goto_location(
+            target_location["latitude"],
+            target_location["longitude"],
+            target_location["altitude"],
+            0,  # yaw
+        )
         while True:
             general_info = await drone_controller.MAVSDKController.get_general_info()
             gps_position = general_info["gps_position"]
-            climbed = gps_position["altitude"] - pre_takeoff_altitude
-            logging.info(f"Drone {climbed} metre yükseldi.")
-            if abs(target_altitude - climbed) <= 0.2:
-                logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı, land() komutu veriliyor.")
+            logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+            if (calculate_distance(gps_position, target_location) <= 0.5):
+                logging.info("Drone hedef konuma ulaştı.")
+                mission_steps[step_name] = True
+                await asyncio.sleep(1)
                 break
             await asyncio.sleep(1)
-        await drone_controller.land()
-        logging.debug("land() komutu verildi.")
-        async for is_in_air in drone_controller.MAVSDKController.drone.telemetry.in_air():
-            if not is_in_air:
-                logging.info("Drone zeminde, disarm ediliyor.")
+            if mission_steps[step_name]:
                 break
-            logging.info("Drone hala havada, bekleniyor...")
-            await asyncio.sleep(1)
-        await drone_controller.disarm()
+    # İniş yapar
+    while True:
+        general_info = await drone_controller.MAVSDKController.get_general_info()
+        gps_position = general_info["gps_position"]
+        climbed = gps_position["altitude"] - pre_takeoff_altitude
+        logging.info(f"Drone {climbed} metre yükseldi.")
+        if abs(target_altitude - climbed) <= 0.2:
+            logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı, land() komutu veriliyor.")
+            mission_steps["in"] = True
+            break
+        await asyncio.sleep(1)
+    while not mission_steps["in"]:
+        await asyncio.sleep(1)
+    await drone_controller.land()
+    logging.debug("land() komutu verildi.")
+    async for is_in_air in drone_controller.MAVSDKController.drone.telemetry.in_air():
+        if not is_in_air:
+            logging.info("Drone zeminde, disarm ediliyor.")
+            break
+        logging.info("Drone hala havada, bekleniyor...")
+        await asyncio.sleep(1)
+    await drone_controller.disarm()
     logging.info("Drone disarm edildi.")
     logging.info("DroneController işlemleri tamamlandı.")
 
