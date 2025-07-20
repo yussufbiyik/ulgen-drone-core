@@ -9,6 +9,7 @@ import asyncio
 import numpy as np
 import json
 import logging
+import math
 
 from utils import pid
 from utils.collision_avoidance import apf
@@ -31,14 +32,14 @@ def format_broadcast_message(message):
     is_armed = 1 if message["armed"] else 0
     flight_mode = message["flight_mode"]
     battery = int(message["battery"])
-    gps_string = f"{message['gps_position']['latitude']},{message['gps_position']['longitude']},{format(message['gps_position']['altitude'], '.4f')}"
+    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f},{format(message['gps_position']['altitude'], '.4f')}"
     velocity = f"{message['velocity']['north']},{message['velocity']['east']},{message['velocity']['down']}"
     new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
 class DroneController:
-    def __init__(self, xbee_port, mavsdk_port="udpin://0.0.0.0:14540"):
+    def __init__(self, xbee_port = None, mavsdk_port="udpin://0.0.0.0:14540"):
         # Kontrolcüler
         self.pid = pid.PID()      
         self.apf = apf.APF()
@@ -172,6 +173,30 @@ class DroneController:
         """
         self.drone.offboard.set_velocity_ned(velocity)
 
+def deg_to_rad(degrees):
+    return degrees * math.pi / 180
+
+def calculate_distance(coord1, coord2):
+    """
+    İki koordinat arasındaki mesafeyi hesaplar.
+    
+    :param coord1: İlk koordinat (latitude, longitude)
+    :param coord2: İkinci koordinat (latitude, longitude)
+    :return: Mesafe (metre cinsinden)
+    """
+    R = 6371  # Dünya'nın yarıçapı (kilometre cinsinden)
+    dist_lat = deg_to_rad(coord2["latitude"] - coord1["latitude"])
+    dist_lon = deg_to_rad(coord2["longitude"] - coord1["longitude"])
+
+    lat1 = deg_to_rad(coord1["latitude"])
+    lat2 = deg_to_rad(coord2["latitude"])
+    # Haversine formülü ile mesafe hesaplama
+    a = (math.sin(dist_lat / 2) ** 2 +
+         math.sin(dist_lon / 2) ** 2 * math.cos(lat1) * math.cos(lat2))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance = R * c * 1000  # Mesafeyi metre cinsine çevir
+    logging.debug(f"Koordinatlar arasındaki mesafe: {distance} metre")
+    return distance
 
 async def main():
     """
@@ -180,7 +205,7 @@ async def main():
     """
     drone_controller = DroneController(
             xbee_port="/dev/ttyUSB0", 
-            # mavsdk_port="serial:///dev/ttyACM0:115200"
+            mavsdk_port="serial:///dev/ttyACM0:115200"
         )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
@@ -226,35 +251,50 @@ async def main():
     # Waypoint'e ilerle
     target_locations = [
         {
-            "latitude_deg": 40.325763,
-            "longitude_deg": 36.473505,
-            "altitude_m": 10,
+            "latitude": 40.325763,
+            "longitude": 36.473505,
+            "altitude": 10,
         },
         {
-            "latitude_deg": 40.325672,
-            "longitude_deg": 36.43802,
-            "altitude_m": 10,
+            "latitude": 40.325672,
+            "longitude": 36.43802,
+            "altitude": 10,
         },
         {
-            "latitude_deg": 40.325460,
-            "longitude_deg": 36.473591,
-            "altitude_m": 10,
+            "latitude": 40.325460,
+            "longitude": 36.473591,
+            "altitude": 10,
+        },
+    ]
+    target_locations2 = [
+        {
+            "latitude": 47.398309,
+            "longitude": 8.5408438,
+            "altitude": 10,
+        },
+        {
+            "latitude": 47.397190,
+            "longitude": 8.547258,
+            "altitude": 10,
+        },
+        {
+            "latitude": 47.397161,
+            "longitude": 8.544898,
+            "altitude": 10,
         },
     ]
     for target_location in target_locations:
         await drone_controller.drone.action.goto_location(
-            target_location["latitude_deg"],
-            target_location["longitude_deg"],
-            target_location["altitude_m"],
+            target_location["latitude"],
+            target_location["longitude"],
+            target_location["altitude"],
             0,  # yaw
         )
         while True:
             general_info = await drone_controller.MAVSDKController.get_general_info()
             gps_position = general_info["gps_position"]
             logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-            if (abs(gps_position["latitude"] - target_location["latitude_deg"]) < 0.0001 and
-                abs(gps_position["longitude"] - target_location["longitude_deg"]) < 0.0001 and
-                abs(gps_position["altitude"] - target_location["altitude_m"]) < 0.2):
+            if (calculate_distance(gps_position, target_location) <= 0.5):
                 logging.info("Drone hedef konuma ulaştı.")
                 await asyncio.sleep(1)
                 break
