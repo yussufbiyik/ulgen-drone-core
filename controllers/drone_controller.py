@@ -205,7 +205,7 @@ async def main():
     """
     drone_controller = DroneController(
             xbee_port="/dev/ttyUSB0", 
-            mavsdk_port="serial:///dev/ttyACM0:115200"
+            mavsdk_port="serial:///dev/ttyACM0:57600"
         )
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
