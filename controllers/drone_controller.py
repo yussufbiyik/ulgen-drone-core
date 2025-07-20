@@ -40,6 +40,31 @@ def format_broadcast_message(message):
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
+def deg_to_rad(degrees):
+    return degrees * math.pi / 180
+
+def calculate_distance(coord1, coord2):
+    """
+    İki koordinat arasındaki mesafeyi hesaplar.
+    
+    :param coord1: İlk koordinat (latitude, longitude)
+    :param coord2: İkinci koordinat (latitude, longitude)
+    :return: Mesafe (metre cinsinden)
+    """
+    R = 6371  # Dünya'nın yarıçapı (kilometre cinsinden)
+    dist_lat = deg_to_rad(coord2["latitude"] - coord1["latitude"])
+    dist_lon = deg_to_rad(coord2["longitude"] - coord1["longitude"])
+
+    lat1 = deg_to_rad(coord1["latitude"])
+    lat2 = deg_to_rad(coord2["latitude"])
+    # Haversine formülü ile mesafe hesaplama
+    a = (math.sin(dist_lat / 2) ** 2 +
+         math.sin(dist_lon / 2) ** 2 * math.cos(lat1) * math.cos(lat2))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance = R * c * 1000  # Mesafeyi metre cinsine çevir
+    logging.debug(f"Koordinatlar arasındaki mesafe: {distance} metre")
+    return distance
+
 class DroneController:
     def __init__(self, xbee_port = None, mavsdk_port="udpin://0.0.0.0:14540"):
         # Kontrolcüler
@@ -166,31 +191,6 @@ class DroneController:
         f_apf = self.apf.calculate(current_pos, neighbor_positions)
         total_velocity = v_pid + f_apf
         return total_velocity
-
-def deg_to_rad(degrees):
-    return degrees * math.pi / 180
-
-def calculate_distance(coord1, coord2):
-    """
-    İki koordinat arasındaki mesafeyi hesaplar.
-    
-    :param coord1: İlk koordinat (latitude, longitude)
-    :param coord2: İkinci koordinat (latitude, longitude)
-    :return: Mesafe (metre cinsinden)
-    """
-    R = 6371  # Dünya'nın yarıçapı (kilometre cinsinden)
-    dist_lat = deg_to_rad(coord2["latitude"] - coord1["latitude"])
-    dist_lon = deg_to_rad(coord2["longitude"] - coord1["longitude"])
-
-    lat1 = deg_to_rad(coord1["latitude"])
-    lat2 = deg_to_rad(coord2["latitude"])
-    # Haversine formülü ile mesafe hesaplama
-    a = (math.sin(dist_lat / 2) ** 2 +
-         math.sin(dist_lon / 2) ** 2 * math.cos(lat1) * math.cos(lat2))
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    distance = R * c * 1000  # Mesafeyi metre cinsine çevir
-    logging.debug(f"Koordinatlar arasındaki mesafe: {distance} metre")
-    return distance
 
 async def main():
     """
