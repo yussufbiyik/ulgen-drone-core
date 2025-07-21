@@ -10,7 +10,7 @@ import numpy as np
 import json
 import logging
 import math
-import pymap3d,
+import pymap3d
 
 from controllers import mavsdk_controller
 from controllers import xbee_controller
