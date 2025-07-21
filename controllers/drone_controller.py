@@ -10,14 +10,12 @@ import numpy as np
 import json
 import logging
 import math
-
-from utils import pid
-from utils.collision_avoidance import apf
+import pymap3d,
 
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
-from mavsdk.offboard import OffboardError, VelocityBodyYawspeed
+from mavsdk.offboard import OffboardError, VelocityNedYaw
 
 from step_controller import StepController, Step
 
@@ -67,9 +65,6 @@ def calculate_distance(coord1, coord2):
 
 class DroneController:
     def __init__(self, xbee_port = None, mavsdk_port="udpin://0.0.0.0:14540"):
-        # Kontrolcüler
-        self.pid = pid.PID()      
-        self.apf = apf.APF()
         
         if xbee_port is not None:
             logging.info(f"XBee portu: {xbee_port} olarak ayarlandı.")
@@ -93,8 +88,7 @@ class DroneController:
         :param message: XBee'den alınan mesaj
         """
         # Örnek data
-        # 1,1,6,50,47.3977058,8.5460053,1.3350,-0.03999999910593033,0.0,0.6800000071525574
-        # 47.3977058,8.5460053,1.3350
+        # 1,1,6,50,47.3977058,8.5460053,1.3350
         if recieved_message.sender not in self.neighbors:
             message_raw = recieved_message.data.split(',')
             if len(message_raw) < 10:
@@ -177,20 +171,6 @@ class DroneController:
         Drone'a iniş komutu gönderir
         """
         await self.drone.action.land()
-    
-    def compute_control_velocity(self, target_position, neighbor_positions):
-        """
-        Kontrol hızı hesapla
-        
-        :param target_position: Hedef konum
-        :param neighbor_positions: Diğer dronların konumları ([x,y,z] şeklinde)
-        :return: Hesaplanan hız vektörü
-        """
-        current_pos = self.get_position()
-        v_pid = self.pid.compute(target_position, current_pos)
-        f_apf = self.apf.calculate(current_pos, neighbor_positions)
-        total_velocity = v_pid + f_apf
-        return total_velocity
 
 async def main():
     """
@@ -301,6 +281,7 @@ async def main():
             target_location["altitude"]+pre_takeoff_altitude,  # GPS yüksekliğine göre ayarlanır
             0,  # yaw
         )
+        
     async def goto_location_check(target_location):
         """
         Drone'un belirli bir konuma ulaşıp ulaşmadığını kontrol eden fonksiyon.
