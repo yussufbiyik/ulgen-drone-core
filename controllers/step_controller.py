@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -7,7 +8,7 @@ logging.basicConfig(
 )
 
 class Step:
-    def __init__(self, name, function, checkFunction, preCheckFunction=None):
+    def __init__(self, name, function, checkFunction, preCheckFunction=None, timeout=None):
         """
         Adım sınıfı.
 
@@ -43,10 +44,14 @@ class StepController:
         """
         logging.info("Adımlar çalıştırılıyor...")
         for step in self.steps:
+            start_time = time.time()*1000
             try:
                 if step.preCheckFunction is not None:
                     while not await step.preCheckFunction():
                         logging.warning(f"Adım {step.name} ön kontrolü başarısız veya yok, atlanıyor.")
+                        if step.timeout and (time.time()*1000 - start_time) > step.timeout:
+                            logging.error(f"Adım {step.name} ön kontrolü zaman aşımına uğradı.")
+                            break
                         await asyncio.sleep(0.1)
                     logging.info(f"Adım {step.name} ön kontrolü başarılı, çalıştırılıyor...")
                 logging.info(f"Adım {step.name} çalıştırılıyor...")
@@ -54,6 +59,9 @@ class StepController:
                 logging.info(f"Adım {step.name} kontrol ediliyor...")
                 while not await step.checkFunction():
                     logging.debug(f"Adım {step.name} henüz tamamlanmadı, tekrar kontrol ediliyor...")
+                    if step.timeout and (time.time()*1000 - start_time) > step.timeout:
+                        logging.error(f"Adım {step.name} kontrolü zaman aşımına uğradı.")
+                        break
                     await asyncio.sleep(0.1)
                 step.is_completed = True
                 logging.info(f"Adım {step.name} başarıyla tamamlandı.")

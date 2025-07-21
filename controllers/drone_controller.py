@@ -16,6 +16,7 @@ from controllers import mavsdk_controller
 from controllers import xbee_controller
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw
+from mavsdk.telemetry import Position
 
 from step_controller import StepController, Step
 
@@ -144,7 +145,7 @@ class DroneController:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
             logging.info(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et
-
+    # Sık kullanılan drone işlemleri
     async def arm(self):
         """
         Drone'u arm eder
@@ -171,6 +172,11 @@ class DroneController:
         Drone'a iniş komutu gönderir
         """
         await self.drone.action.land()
+    
+    # PID & APF Mekanizmaları
+    # async def background_offboard_controller(self):
+
+
 
 async def main():
     """
@@ -236,17 +242,55 @@ async def main():
     # Örnek kullanım
     # Arm eder
     async def arm():
-        """
+        """0
         Drone'u arm eden adım fonksiyonu.
         """
         logging.info("Drone arm ediliyor...")
         await drone_controller.arm()
+        # Offboard moduna geçer
+        logging.info("Drone offboard moduna geçiyor...")
     async def arm_check():
         """
         Drone'un arm durumunu kontrol eden fonksiyon.
         """
         return await drone_controller.MAVSDKController.is_armed()
     step_controller.add_step(Step("arm", arm, arm_check))
+    # Diğer dronların broadcast mesajlarını bekle
+    async def wait_for_broadcast():
+        """
+        Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
+        """
+        logging.info("Drone diğer dronların broadcast mesajlarını bekliyor...")
+        logging.info("Diğer bir drone keşfedildi.")
+    async def wait_for_broadcast_pre_check():
+        """
+        Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
+        
+        :return: True eğer en az bir komşu varsa; aksi halde False
+        """
+        if len(drone_controller.neighbors) > 0:
+            logging.info(f"Komşular: {drone_controller.neighbors}")
+            return True
+        return False
+    # Offboard hazırlıklarını yapar ve başlatır
+    async def switch_to_offboard():
+        """
+        Drone'u offboard moduna geçiren adım fonksiyonu.
+        """
+        logging.info("Drone offboard moduna geçiyor...")
+        try:
+            await drone_controller.drone.telemetry_server.publish_home(
+                Position(
+                    latitude=pre_takeoff_altitude,  # GPS yüksekliğine göre ayarlanır
+                    longitude=0,
+                    altitude=0  
+                )
+            )
+            await drone_controller.drone.offboard.set_velocity_ned(VelocityNedYaw(0, 0, 0, 0))
+            await drone_controller.drone.offboard.start()
+            logging.info("Drone offboard moduna geçti.")
+        except OffboardError as e:
+            logging.error(f"Offboard moduna geçilirken hata oluştu: {e}")
     # Kalkış yapar
     target_altitude = 10  # Kalkış yüksekliği
     async def takeoff():
