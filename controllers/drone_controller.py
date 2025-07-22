@@ -425,8 +425,6 @@ async def main():
         """
         logging.info("Drone arm ediliyor...")
         await drone_controller.arm()
-        # Offboard moduna geçer
-        logging.info("Drone offboard moduna geçiyor...")
     async def arm_check():
         """
         Drone'un arm durumunu kontrol eden fonksiyon.
