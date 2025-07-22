@@ -11,7 +11,6 @@ import numpy as np
 import json
 import logging
 import math
-import pymap3d
 import socket
 
 from controllers import mavsdk_controller
@@ -21,7 +20,6 @@ from utils.pid import PID
 from utils.apf import APF
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw
-from mavsdk.telemetry import Position
 
 from step_controller import StepController, Step
 
@@ -422,7 +420,7 @@ async def main():
     # Örnek kullanım
     # Arm eder
     async def arm():
-        """0
+        """
         Drone'u arm eden adım fonksiyonu.
         """
         logging.info("Drone arm ediliyor...")

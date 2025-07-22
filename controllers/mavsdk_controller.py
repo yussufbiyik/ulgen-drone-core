@@ -6,7 +6,6 @@ import asyncio
 import functools
 import mavsdk
 from mavsdk import System
-print(mavsdk.__file__)
 
 def check_connected(func):
     @functools.wraps(func)
