@@ -198,17 +198,24 @@ class XBeeController:
         else:
             logging.warning("XBee zaten kapalı.")
             
-
-if __name__ == "__main__":
-    def message_received_callback(message):
-        logging.info(f"Mesaj alındı: {message}")
-    xbee = XBeeController(port="/dev/ttyUSB0", message_received_callback=message_received_callback)
+def main():
+    """
+    XBeeController test fonksiyonu.
+    Bu fonksiyon, XBee cihazını başlatır, mesaj gönderir ve dinler.
+    """
+    xbee = XBeeController(message_received_callback=XBeeController.default_message_received_callback)
     xbee.listen()
-    # Uygulama kapatılırken XBee cihazını kapat
+    
+    # Test mesajı gönder
     try:
         while True:
-            # Mesaj gönderme örneği (Veri bilerek önceden tanımlandı)
-            # xbee.send_broadcast_message("oto mesaj")
-            time.sleep(15)
+            # xbee.send_broadcast_message("oto mesaj", construct_message=True)
+            time.sleep(1)
     except KeyboardInterrupt:
         xbee.close()
+
+if __name__ == "__main__":
+    logging.info("XBeeController başlatılıyor...")
+    main()
+    logging.info("XBeeController testinin tüm adımları tamamlandı, çıkılıyor.")
+    sys.exit(0)

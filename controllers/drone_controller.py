@@ -1,8 +1,4 @@
-import os
 import sys 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
 
 import threading
 import time
@@ -13,15 +9,15 @@ import logging
 import math
 import socket
 
-from controllers import mavsdk_controller
-from controllers import xbee_controller
+from controllers.mavsdk_controller import MAVSDKController
+from controllers.xbee_controller import XBeeController
 
 from utils.pid import PID
 from utils.apf import APF
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 
-from step_controller import StepController, Step
+from controllers.step_controller import StepController, Step
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
@@ -45,28 +41,6 @@ def format_broadcast_message(message):
 def deg_to_rad(degrees):
     return degrees * math.pi / 180
 
-def calculate_distance(coord1, coord2):
-    """
-    İki koordinat arasındaki mesafeyi hesaplar.
-    
-    :param coord1: İlk koordinat (latitude, longitude)
-    :param coord2: İkinci koordinat (latitude, longitude)
-    :return: Mesafe (metre cinsinden)
-    """
-    R = 6371  # Dünya'nın yarıçapı (kilometre cinsinden)
-    dist_lat = deg_to_rad(coord2["latitude"] - coord1["latitude"])
-    dist_lon = deg_to_rad(coord2["longitude"] - coord1["longitude"])
-
-    lat1 = deg_to_rad(coord1["latitude"])
-    lat2 = deg_to_rad(coord2["latitude"])
-    # Haversine formülü ile mesafe hesaplama
-    a = (math.sin(dist_lat / 2) ** 2 +
-         math.sin(dist_lon / 2) ** 2 * math.cos(lat1) * math.cos(lat2))
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    distance = R * c * 1000  # Mesafeyi metre cinsine çevir
-    logging.debug(f"Koordinatlar arasındaki mesafe: {distance} metre")
-    return distance
-
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 5005
 
@@ -77,7 +51,7 @@ class DroneController:
         self.socket = None
         if not self.isTesting:
             logging.info(f"XBee portu: {xbee_port} olarak ayarlandı.")
-            self.XBeeController = xbee_controller.XBeeController(
+            self.XBeeController = XBeeController(
                 port=xbee_port,
                 message_received_callback=self.handle_message_received
             )
@@ -88,7 +62,8 @@ class DroneController:
             threading.Thread(target=self.listen_to_socket).start()
         asyncio.create_task(self.broadcast_drone_status())
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
-        self.MAVSDKController = mavsdk_controller.MAVSDKController(system_address=mavsdk_port)
+        self.MAVSDKController = MAVSDKController(system_address=mavsdk_port)
+        self.MAVSDKController.connect()
         self.drone = self.MAVSDKController.drone
         self.offboardController = {
             "isActive": False,
@@ -518,7 +493,7 @@ async def main():
         general_info = await drone_controller.MAVSDKController.get_general_info()
         gps_position = general_info["gps_position"]
         logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-        if (calculate_distance(gps_position, target_location) <= 0.5):
+        if (drone_controller.distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
             logging.info("Drone hedef konuma ulaştı.")
             return True
         return False
