@@ -17,6 +17,9 @@ import socket
 from controllers import mavsdk_controller
 from controllers import xbee_controller
 
+from utils.pid import PID
+from utils.apf import APF
+
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 from mavsdk.telemetry import Position
 
@@ -89,6 +92,20 @@ class DroneController:
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
         self.MAVSDKController = mavsdk_controller.MAVSDKController(system_address=mavsdk_port)
         self.drone = self.MAVSDKController.drone
+        self.offboardController = {
+            "isActive": False,
+            "altitudeToKeep": 0.0,
+            "targetPosition": None,
+        }
+        # Her eksen üzerinde kontrol sahibi olmak için
+        # PID kontrolörleri eksen başına ayrı ayrı tanımlanır.
+        # Yatay eksen
+        self.pid_n = PID(Kp=0.15, Ki=0.0, Kd=0.15)
+        self.pid_e = PID(Kp=0.15, Ki=0.0, Kd=0.15)
+        # Yükseklik ekseni
+        self.pid_z = PID(Kp=0.3, Ki=0.0, Kd=0.3)
+        self.apf = APF()
+        
         self.neighbors = []
 
     def listen_to_socket(self):
@@ -129,12 +146,7 @@ class DroneController:
                         "latitude": float(message_raw[4]),
                         "longitude": float(message_raw[5]),
                         "altitude": float(message_raw[6])
-                    },
-                    # "velocity": {
-                    #     "north": float(message_raw[7]),
-                    #     "east": float(message_raw[8]),
-                    #     "down": float(message_raw[9])
-                    # }
+                    }
                 }
             }
             self.neighbors.append(message_data)
@@ -229,9 +241,118 @@ class DroneController:
         await self.drone.action.land()
     
     # PID & APF Mekanizmaları
-    # async def background_offboard_controller(self):
+    def distance_meters(self, lat1, lon1, lat2, lon2):
+        # Haversine formülü ile mesafe hesaplama
+        R = 6371000
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (math.sin(dlat / 2) ** 2 +
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+             math.sin(dlon / 2) ** 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
 
+    def latlon_to_ned(self, target_lat, target_lon, current_lat, current_lon):
+        # GPS koordinatlarını NED düzlemine çevir
+        d_north = self.distance_meters(current_lat, current_lon, target_lat, current_lon)
+        d_east = self.distance_meters(current_lat, current_lon, current_lat, target_lon)
+        if target_lat < current_lat:
+            d_north *= -1
+        if target_lon < current_lon:
+            d_east *= -1
+        return d_north, d_east
 
+    def clamp_velocity(self, v, limit=1.0):
+        """
+        Hızı sınırlar.
+        :param v: Hız değeri
+        :param limit: Sınır değeri
+        :return: Sınırlanmış hız
+        """
+        return max(-limit, min(limit, v))
+
+    async def apf_controller(self):
+        """
+        APF: Komşu dronelardan kaçınmak için hız vektörü üretir.
+        """
+        current_data = await self.MAVSDKController.get_general_info()
+        current_position = current_data["gps_position"]
+
+        vx, vy = self.apf.compute_apf(current_position, self.neighbors)
+        return vx, vy
+
+    async def pid_controller(self, target_position):
+        """
+        PID kontrolü: hedef pozisyona yönelmek için hız vektörü üretir.
+        """
+        current_data = await self.MAVSDKController.get_general_info()
+        current_position = current_data["gps_position"]
+
+        d_north, d_east = self.latlon_to_ned(
+            target_position["latitude"], target_position["longitude"],
+            current_position["latitude"], current_position["longitude"]
+        )
+
+        dt = 0.1  # Sabit güncelleme süresi
+        vx = self.pid_n.compute(d_north, dt)
+        vy = self.pid_e.compute(d_east, dt)
+        return vx, vy
+
+    async def background_offboard_controller(self):
+        while True:
+            if not self.offboardController["isActive"]:
+                logging.debug("OffboardController kapalı, kontrol döngüsü atlanıyor.")
+                await asyncio.sleep(0.1)
+                continue
+
+            if not await self.drone.offboard.is_active():
+                try:
+                    await self.drone.offboard.set_velocity_ned(
+                        VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                    )
+                    await self.drone.offboard.start()
+                    logging.info("Offboard modu başlatıldı.")
+                except OffboardError as e:
+                    logging.error(f"Offboard moduna geçiş başarısız: {e}")
+                    await asyncio.sleep(0.5)
+                    continue
+
+            target_pos = self.offboardController.get("targetPosition")
+            alt_to_keep = self.offboardController.get("altitudeToKeep")
+
+            if target_pos is None:
+                logging.warning("Hedef konum ayarlanmamış. Hover moduna geçiliyor.")
+                await self.drone.offboard.set_velocity_ned(
+                    VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                )
+                await asyncio.sleep(0.1)
+                continue
+
+            # Güncel konum bilgisi
+            current_data = await self.MAVSDKController.get_general_info()
+            current_position = current_data["gps_position"]
+
+            # PID ve APF ile hızları hesapla
+            pid_vx, pid_vy = await self.pid_controller(target_pos)
+            apf_vx, apf_vy = await self.apf_controller()
+
+            # İrtifa kontrolü
+            error_z = alt_to_keep - current_position["altitude"]
+            vz = self.pid_z.compute(error_z, 0.1)
+
+            # Hızları birleştir ve sınırla
+            vx = self.clamp_velocity(pid_vx + apf_vx)
+            vy = self.clamp_velocity(pid_vy + apf_vy)
+            vz = self.clamp_velocity(vz)
+
+            try:
+                await self.drone.offboard.set_velocity_ned(
+                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=-vz, yaw_deg=0.0)
+                )
+            except OffboardError as e:
+                logging.error(f"Hız vektörü ayarlanamadı: {e}")
+
+            await asyncio.sleep(0.1)
 
 async def main():
     """
@@ -240,7 +361,7 @@ async def main():
     """
     isTesting = True
     xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
-    mavsdk_port = lambda: "udpin://0.0.0.0:14540" if isTesting else "serial:///dev/ttyACM0:57600"
+    mavsdk_port = lambda: "udp://0.0.0.0:14540" if isTesting else "serial:///dev/ttyACM0:57600"
     drone_controller = DroneController(
             xbee_port=xbee_port(),
             mavsdk_port=mavsdk_port(),
@@ -321,7 +442,7 @@ async def main():
         """
         logging.info("Drone diğer dronların broadcast mesajlarını bekliyor...")
         logging.info("Diğer bir drone keşfedildi.")
-    async def wait_for_broadcast_pre_check():
+    async def wait_for_broadcast_check():
         """
         Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
         
@@ -331,25 +452,12 @@ async def main():
             logging.info(f"Komşular: {drone_controller.neighbors}")
             return True
         return False
-    # Offboard hazırlıklarını yapar ve başlatır
-    async def switch_to_offboard():
-        """
-        Drone'u offboard moduna geçiren adım fonksiyonu.
-        """
-        logging.info("Drone offboard moduna geçiyor...")
-        try:
-            await drone_controller.drone.telemetry_server.publish_home(
-                Position(
-                    latitude=pre_takeoff_altitude,  # GPS yüksekliğine göre ayarlanır
-                    longitude=0,
-                    altitude=0  
-                )
-            )
-            await drone_controller.drone.offboard.set_velocity_ned(VelocityNedYaw(0, 0, 0, 0))
-            await drone_controller.drone.offboard.start()
-            logging.info("Drone offboard moduna geçti.")
-        except OffboardError as e:
-            logging.error(f"Offboard moduna geçilirken hata oluştu: {e}")
+    step_controller.add_step(Step(
+        "wait_for_broadcast", 
+        wait_for_broadcast,
+        wait_for_broadcast_check, 
+        wait_for_broadcast_check, 
+        timeout=30))
     # Kalkış yapar
     target_altitude = 10  # Kalkış yüksekliği
     async def takeoff():
@@ -370,6 +478,29 @@ async def main():
             logging.debug(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
             return True
     step_controller.add_step(Step("takeoff", takeoff, altitude_check))
+    # OffboardController arka planda çalışır
+    async def enable_offboard_controller():
+        """
+        OffboardController'ı etkinleştiren fonksiyon.
+        """
+        logging.info("OffboardController etkinleştiriliyor...")
+        drone_controller.offboardController["isActive"] = True
+        asyncio.create_task(drone_controller.background_offboard_controller())
+    async def enable_offboard_controller_check():
+        """
+        OffboardController'ın etkinleştirilip etkinleştirilmediğini kontrol eden fonksiyon.
+        
+        :return: True eğer OffboardController etkinse; aksi halde False
+        """
+        if await drone_controller.drone.offboard.is_active():
+            logging.info("OffboardController etkin.")
+            return True
+        return False
+    step_controller.add_step(Step(
+        "enable_offboard_controller", 
+        enable_offboard_controller, 
+        enable_offboard_controller_check 
+        ))
     # Waypoint'lere ilerler
     async def goto_location(target_location):
         """
@@ -378,12 +509,8 @@ async def main():
         :param target_location: Hedef konum (latitude, longitude, altitude)
         """
         logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
-        await drone_controller.drone.action.goto_location(
-            target_location["latitude"],
-            target_location["longitude"],
-            target_location["altitude"]+pre_takeoff_altitude,  # GPS yüksekliğine göre ayarlanır
-            0,  # yaw
-        )
+        drone_controller.offboardController["targetPosition"] = target_location
+        drone_controller.offboardController["altitudeToKeep"] = target_location["altitude"]
         
     async def goto_location_check(target_location):
         """
@@ -415,6 +542,7 @@ async def main():
         Drone'u inişe hazırlayan adım fonksiyonu.
         """
         logging.info("Drone iniş yapıyor...")
+        drone_controller.offboardController["isActive"] = False
         await drone_controller.land()
     step_controller.add_step(Step("land", land,
                 lambda alt=0: altitude_check(alt)
