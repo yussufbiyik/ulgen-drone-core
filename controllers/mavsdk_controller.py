@@ -4,7 +4,9 @@ import json
 import logging
 import asyncio
 import functools
+import mavsdk
 from mavsdk import System
+print(mavsdk.__file__)
 
 def check_connected(func):
     @functools.wraps(func)
@@ -58,7 +60,8 @@ class MAVSDKController:
         Drone ile bağlantı kurar.
         """
         try:
-            await self.drone.connect(system_address=self.connection_url)
+            await self.drone.connect(
+                system_address=self.connection_url)
             if await self.wait_for_connection():
                 self.is_connected = True
                 logging.info(f"{self.connection_url} adresine bağlanıldı.")

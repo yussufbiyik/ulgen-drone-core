@@ -12,6 +12,7 @@ import serial
 import pprint
 from queue import Queue, Full
 import functools
+
 from digi.xbee.devices import XBeeDevice
 from digi.xbee.exception import XBeeException, TransmitException, TimeoutException, InvalidOperatingModeException
 
@@ -199,7 +200,6 @@ class XBeeController:
             
 
 if __name__ == "__main__":
-    # Örnek kullanım
     def message_received_callback(message):
         logging.info(f"Mesaj alındı: {message}")
     xbee = XBeeController(port="/dev/ttyUSB0", message_received_callback=message_received_callback)

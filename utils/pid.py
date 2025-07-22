@@ -1,29 +1,27 @@
-import numpy as np
-
 class PID:
-    def __init__(self, 
-                    Kp = [0.8, 0.8, 0.5], 
-                    Ki = [0.02, 0.02, 0.01], 
-                    Kd = [0.3, 0.3, 0.2], 
-                    dt = 0.05
-                ):
-        self.Kp, self.Ki, self.Kd, self.dt = Kp, Ki, Kd, dt
-        self.integral = np.zeros(3)
-        self.prev_error = np.zeros(3)
+    def __init__(self, Kp=0.0, Ki=0.0, Kd=0.0, max_output=2.0, min_output=-2.0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
 
-    def compute(self, target, current):
-        """"
-        PID kontrol algoritması
-        """
-        e = target - current
-        
-        # İntegral ve türev bileşenleri
-        self.integral += e * self.dt
-        derivative = (e - self.prev_error) / self.dt
-        
-        self.prev_error = e
-        velocity = self.Kp*e + self.Ki*self.integral + self.Kd*derivative
-        # Hız limitleri
-        clipped_velocity = np.clip(velocity, -2.0, 2.0)
-        
-        return clipped_velocity
+        self.max_output = max_output
+        self.min_output = min_output
+
+        self.integral = 0.0
+        self.prev_error = 0.0
+
+    def reset(self):
+        self.integral = 0.0
+        self.prev_error = 0.0
+
+    def compute(self, error, dt):
+        self.integral += error * dt
+        derivative = (error - self.prev_error) / dt if dt > 0 else 0.0
+
+        output = (self.Kp * error) + (self.Ki * self.integral) + (self.Kd * derivative)
+
+        # Clamp the output
+        output = max(self.min_output, min(self.max_output, output))
+
+        self.prev_error = error
+        return output
