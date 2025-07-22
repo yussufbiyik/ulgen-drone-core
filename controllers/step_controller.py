@@ -22,6 +22,7 @@ class Step:
         self.checkFunction = checkFunction
         self.preCheckFunction = preCheckFunction
         self.is_completed = False
+        self.timeout = timeout
 
 class StepController:
     def __init__(self):
