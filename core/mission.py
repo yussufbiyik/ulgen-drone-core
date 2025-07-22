@@ -13,7 +13,8 @@ class Mission:
     """
     def __init__(self, mission_name, drone_controller: DroneController, **kwargs):
         self.name = mission_name
-        self.drone = drone_controller
+        self.drone_controller = drone_controller
+        self.drone = drone_controller.drone
         self.parameters = kwargs
         self.step_controller = StepController()
         self.status = {
@@ -22,6 +23,16 @@ class Mission:
             "end_time": None,
             "error": None
         }
+
+    async def wait_for_drone_health(self):
+        while True:
+            general_info = await self.drone.MAVSDKController.get_general_info()
+            gps_position = general_info["gps_position"]
+            if gps_position and "altitude" in gps_position:
+                self.drone.pre_takeoff_location = gps_position
+                break
+            logging.info("GPS yükseklik bilgisi henüz alınamadı, bekleniyor...")
+            await asyncio.sleep(0.5)
     
     async def run(self):
         """

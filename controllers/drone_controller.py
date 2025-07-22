@@ -63,8 +63,8 @@ class DroneController:
         asyncio.create_task(self.broadcast_drone_status())
         self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
         self.MAVSDKController = MAVSDKController(system_address=mavsdk_port)
-        self.MAVSDKController.connect()
         self.drone = self.MAVSDKController.drone
+        self.pre_takeoff_location = None  # Aslında home gibi
         self.offboardController = {
             "isActive": False,
             "altitudeToKeep": 0.0,
@@ -81,6 +81,7 @@ class DroneController:
         
         self.neighbors = []
 
+    # XBee ile alakalı işlemler
     def listen_to_socket(self):
         while True:
             data, _ = self.socket.recvfrom(2048)
@@ -185,33 +186,6 @@ class DroneController:
                 continue
             logging.info(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et
-    # Sık kullanılan drone işlemleri
-    async def arm(self):
-        """
-        Drone'u arm eder
-        """
-        await self.drone.action.arm()
-
-    async def disarm(self):
-        """
-        Drone'u disarm eder
-        """
-        await self.drone.action.disarm()
-    
-    async def takeoff(self, altitude): 
-        """
-        Drone'a kalkış komutu gönderir
-        
-        :param altitude: Kalkış yüksekliği
-        """
-        await self.drone.action.set_takeoff_altitude(altitude)
-        await self.drone.action.takeoff()
-
-    async def land(self): 
-        """
-        Drone'a iniş komutu gönderir
-        """
-        await self.drone.action.land()
     
     # PID & APF Mekanizmaları
     def distance_meters(self, lat1, lon1, lat2, lon2):
@@ -327,6 +301,155 @@ class DroneController:
 
             await asyncio.sleep(0.1)
 
+    # Sık kullanılan drone işlemleri
+    async def wait_for_proper_data(self):
+        """
+        Drone'un doğru verileri almasını bekler.
+        """
+        while True:
+            general_info = await self.MAVSDKController.get_general_info()
+            gps_position = general_info["gps_position"]
+            if gps_position and "altitude" in gps_position:
+                logging.info(f"Doğru veriler alındı.")
+                break
+            logging.info("Doğru veriler henüz alınamadı, bekleniyor...")
+            await asyncio.sleep(0.5)
+
+    async def arm(self):
+        """
+        Drone'u arm eder
+        """
+        await self.drone.action.arm()
+    async def arm_check(self):
+        """
+        Drone'un arm durumunu kontrol eder.
+        
+        :return: True eğer drone arm edildiyse; aksi halde False
+        """
+        async for is_armed in self.drone.telemetry.armed():
+            return is_armed
+    
+    async def wait_for_broadcast(self):
+        """
+        Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
+        """
+        logging.info("Drone diğer dronların broadcast mesajlarını bekliyor...")
+        logging.info("Diğer bir drone keşfedildi.")
+    async def wait_for_broadcast_check(self):
+        """
+        Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
+        
+        :return: True eğer en az bir komşu varsa; aksi halde False
+        """
+        if len(self.neighbors) > 0:
+            logging.info(f"Komşular: {self.neighbors}")
+            return True
+        return False
+    
+    async def set_pre_takeoff_location(self):
+        """
+        Drone'un kalkış öncesi konumunu belirler.
+        Bu, kalkış yüksekliğini hesaplamak için kullanılır.
+        """
+        while True:
+            general_info = await self.MAVSDKController.get_general_info()
+            gps_position = general_info["gps_position"]
+            if gps_position and "altitude" in gps_position:
+                self.pre_takeoff_location = gps_position
+                logging.info(f"Kalkış öncesi konum ayarlandı: {self.pre_takeoff_location}")
+                break
+            logging.info("GPS konum bilgisi henüz alınamadı, bekleniyor...")
+            await asyncio.sleep(0.5)
+    async def pre_takeoff_location_check(self):
+        """
+        Drone'un kalkış öncesi konum kontrol fonksiyonu.
+        Bu, drone'un kalkış yapmadan önceki konumunu kontrol eder.
+
+        :return: True eğer drone'un kalkış öncesi konumu ayarlandıysa; aksi halde False
+        """
+        if self.pre_takeoff_location is not None:
+            logging.info(f"Kalkış öncesi konum belirlenmesi başarılı: {self.pre_takeoff_location}")
+            return True
+        logging.warning("Kalkış öncesi konum henüz ayarlanmamış.")
+        return False
+    
+    async def takeoff(self, altitude): 
+        """
+        Drone'a kalkış komutu gönderir
+        
+        :param altitude: Kalkış yüksekliği
+        """
+        await self.drone.action.set_takeoff_altitude(altitude)
+        await self.drone.action.takeoff()
+    async def altitude_check(self, target_altitude):
+        """
+        Drone'un irtifasını kontrol eden fonksiyon.
+        """
+        general_info = await self.MAVSDKController.get_general_info()
+        gps_position = general_info["gps_position"]
+        climbed = abs(gps_position["altitude"] - self.pre_takeoff_location["altitude"])
+        logging.info(f"Drone hedef irtifa ile {climbed} metre mesafede.")
+        if abs(target_altitude - climbed) <= 0.2:
+            logging.debug(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
+            return True
+        return False
+
+    async def enable_offboard_controller(self):
+        logging.info("OffboardController aktifleştiriliyor...")
+        self.offboardController["isActive"] = True
+        asyncio.create_task(
+            self.background_offboard_controller()
+        )
+    async def enable_offboard_controller_check(self):
+        if await self.drone.offboard.is_active():
+            logging.info("OffboardController etkin.")
+            return True
+        return False
+    
+    async def goto_location_with_offboard(self, target_location):
+        logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
+        self.offboardController["targetPosition"] = target_location
+        self.offboardController["altitudeToKeep"] = target_location["altitude"]
+    async def goto_location_check(self, target_location):
+        general_info = await self.MAVSDKController.get_general_info()
+        gps_position = general_info["gps_position"]
+        logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+        if (self.distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
+            logging.info("Drone hedef konuma ulaştı.")
+            return True
+        return False
+    
+    async def land(self): 
+        """
+        Drone'a iniş komutu gönderir
+        """
+        logging.info("Drone iniş yapıyor...")
+        self.offboardController["isActive"] = False
+        await self.drone.action.land()
+
+    async def disarm_pre_check(self):
+        """
+        Drone'un disarm edilmeden önceki durumunu kontrol eder.
+        Şartın sağlanması için drone'un havada olmaması gerekir.
+        
+        :return: True eğer drone havada değilse; aksi halde False
+        """
+        async for is_in_air in self.drone.telemetry.in_air():
+            return not is_in_air
+    async def disarm(self):
+        """
+        Drone'u disarm eder
+        """
+        await self.drone.action.disarm()
+    async def disarm_check(self):
+        """
+        Drone'un disarm durumunu kontrol eder.
+        
+        :return: True eğer drone disarm edildiyse; aksi halde False
+        """
+        is_armed = await self.drone.action.is_armed()
+        return not is_armed
+
 async def main():
     """
     DroneController temel işlemlerini test eden ana fonksiyon.
@@ -379,167 +502,50 @@ async def main():
 
     await drone_controller.MAVSDKController.connect()
     while not drone_controller.MAVSDKController.is_connected:
-        logging.info(drone_controller.MAVSDKController.is_connected)
-        logging.info("DroneController henüz bağlı değil, bağlanmaya çalışılıyor...")
+        logging.error("MAVSDK henüz bağlı değil, bağlanmaya çalışılıyor...")
         await asyncio.sleep(1)
-    logging.info("DroneController bağlı.")
-    pre_takeoff_altitude = None
-    while True:
-        _general_info = await drone_controller.MAVSDKController.get_general_info()
-        _gps_position = _general_info["gps_position"]
-        if _gps_position and "altitude" in _gps_position:
-            pre_takeoff_altitude = _gps_position["altitude"]
-            break
-        logging.info("GPS yükseklik bilgisi henüz alınamadı, bekleniyor...")
-        await asyncio.sleep(0.5)
+    logging.info("MAVSDK bağlı.")
     # Örnek kullanım
+    await drone_controller.wait_for_proper_data()
+    # Kalkış öncesi konumu ayarla
+    step_controller.add_step(Step("Kalkış Öncesi Konum Ayarı", drone_controller.set_pre_takeoff_location, drone_controller.pre_takeoff_location_check))
     # Arm eder
-    async def arm():
-        """
-        Drone'u arm eden adım fonksiyonu.
-        """
-        logging.info("Drone arm ediliyor...")
-        await drone_controller.arm()
-    async def arm_check():
-        """
-        Drone'un arm durumunu kontrol eden fonksiyon.
-        """
-        return await drone_controller.MAVSDKController.is_armed()
-    step_controller.add_step(Step("arm", arm, arm_check))
+    step_controller.add_step(Step("Arm Et", drone_controller.arm, drone_controller.arm_check))
     # Diğer dronların broadcast mesajlarını bekle
-    async def wait_for_broadcast():
-        """
-        Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
-        """
-        logging.info("Drone diğer dronların broadcast mesajlarını bekliyor...")
-        logging.info("Diğer bir drone keşfedildi.")
-    async def wait_for_broadcast_check():
-        """
-        Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
-        
-        :return: True eğer en az bir komşu varsa; aksi halde False
-        """
-        if len(drone_controller.neighbors) > 0:
-            logging.info(f"Komşular: {drone_controller.neighbors}")
-            return True
-        return False
     step_controller.add_step(Step(
-        "wait_for_broadcast", 
-        wait_for_broadcast,
-        wait_for_broadcast_check, 
-        wait_for_broadcast_check, 
+        "Broadcastleri bekle", 
+        drone_controller.wait_for_broadcast,
+        drone_controller.wait_for_broadcast_check,
+        drone_controller.wait_for_broadcast_check,
         timeout=30))
     # Kalkış yapar
     target_altitude = 10  # Kalkış yüksekliği
-    async def takeoff():
-        """
-        Drone'u kalkışa hazırlayan adım fonksiyonu.
-        """
-        logging.info("Drone kalkış yapıyor...")
-        await drone_controller.takeoff(target_altitude)
-    async def altitude_check(target_altitude=target_altitude):
-        """
-        Drone'un kalkış durumunu kontrol eden fonksiyon.
-        """
-        general_info = await drone_controller.MAVSDKController.get_general_info()
-        gps_position = general_info["gps_position"]
-        climbed = abs(gps_position["altitude"] - pre_takeoff_altitude)
-        logging.info(f"Drone hedef irtifa ile {climbed} metre mesafede.")
-        if abs(target_altitude - climbed) <= 0.2:
-            logging.debug(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
-            return True
-    step_controller.add_step(Step("takeoff", takeoff, altitude_check))
-    # OffboardController arka planda çalışır
-    async def enable_offboard_controller():
-        """
-        OffboardController'ı etkinleştiren fonksiyon.
-        """
-        logging.info("OffboardController etkinleştiriliyor...")
-        drone_controller.offboardController["isActive"] = True
-        asyncio.create_task(drone_controller.background_offboard_controller())
-    async def enable_offboard_controller_check():
-        """
-        OffboardController'ın etkinleştirilip etkinleştirilmediğini kontrol eden fonksiyon.
-        
-        :return: True eğer OffboardController etkinse; aksi halde False
-        """
-        if await drone_controller.drone.offboard.is_active():
-            logging.info("OffboardController etkin.")
-            return True
-        return False
     step_controller.add_step(Step(
-        "enable_offboard_controller", 
-        enable_offboard_controller, 
-        enable_offboard_controller_check 
+                "Takeoff", 
+                lambda: drone_controller.takeoff(target_altitude), 
+                lambda: drone_controller.altitude_check(target_altitude)
+            ))
+    # OffboardController arka planda çalışır
+    step_controller.add_step(Step(
+        "OffboardController'ı Aktifleştir", 
+        drone_controller.enable_offboard_controller, 
+        drone_controller.enable_offboard_controller_check 
         ))
     # Waypoint'lere ilerler
-    async def goto_location(target_location):
-        """
-        Drone'u belirli bir konuma götüren adım fonksiyonu.
-        
-        :param target_location: Hedef konum (latitude, longitude, altitude)
-        """
-        logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
-        drone_controller.offboardController["targetPosition"] = target_location
-        drone_controller.offboardController["altitudeToKeep"] = target_location["altitude"]
-        
-    async def goto_location_check(target_location):
-        """
-        Drone'un belirli bir konuma ulaşıp ulaşmadığını kontrol eden fonksiyon.
-        
-        :param target_location: Hedef konum (latitude, longitude, altitude)
-        :return: True eğer drone hedef konuma ulaştıysa; aksi halde False
-        """
-        general_info = await drone_controller.MAVSDKController.get_general_info()
-        gps_position = general_info["gps_position"]
-        logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-        if (drone_controller.distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
-            logging.info("Drone hedef konuma ulaştı.")
-            return True
-        return False
     for i, target_location in enumerate(target_locations2):
-        step_name = f"goto_location_{i+1}"
+        step_name = f"{i+1} Numaralı Hedefe İlerle"
         step_controller.add_step(
             Step(
                 step_name, 
-                lambda loc=target_location: goto_location(loc), 
-                lambda loc=target_location: goto_location_check(loc)
+                lambda loc=target_location: drone_controller.goto_location_with_offboard(loc), 
+                lambda loc=target_location: drone_controller.goto_location_check(loc)
             )
         )
         logging.info(f"{step_name} adımı eklendi.")
     # İniş yapar
-    async def land():
-        """
-        Drone'u inişe hazırlayan adım fonksiyonu.
-        """
-        logging.info("Drone iniş yapıyor...")
-        drone_controller.offboardController["isActive"] = False
-        await drone_controller.land()
-    step_controller.add_step(Step("land", land,
-                lambda alt=0: altitude_check(alt)
-            ))
+    step_controller.add_step(Step("land", drone_controller.land, lambda: drone_controller.altitude_check(0)))
     # Disarm eder
-    async def disarm_pre_check():
-        """
-        Drone'un disarm durumunu kontrol eden fonksiyon.
-        """
-        async for is_in_air in drone_controller.MAVSDKController.drone.telemetry.in_air():
-            return not is_in_air
-    async def disarm():
-        """
-        Drone'u disarm eden adım fonksiyonu.
-        """
-        logging.info("Drone disarm ediliyor...")
-        await drone_controller.disarm()
-    async def disarm_check():
-        """
-        Drone'un disarm durumunu kontrol eden fonksiyon.
-        """
-        is_armed = await drone_controller.MAVSDKController.is_armed()
-        if not is_armed:
-            return True
-        return False
-    step_controller.add_step(Step("disarm", disarm, disarm_check, disarm_pre_check))
+    step_controller.add_step(Step("disarm", drone_controller.disarm, drone_controller.disarm_check, drone_controller.disarm_pre_check))
     logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
     await step_controller.run_steps()
     while not step_controller.is_all_done:
