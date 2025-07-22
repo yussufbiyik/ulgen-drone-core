@@ -8,7 +8,7 @@ logging.basicConfig(
 )
 
 class Step:
-    def __init__(self, name, function, checkFunction, preCheckFunction=None, timeout=None):
+    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None):
         """
         Adım sınıfı.
 
@@ -16,12 +16,16 @@ class Step:
         name (str): Adımın adı.
         function (Callable[..., Any]): Adımı gerçekleştiren fonksiyon.
         checkFunction (Callable[[], bool]): Adımın tamamlanıp tamamlanmadığını kontrol eden fonksiyon.
+        preCheckFunction (Callable[[], bool], optional): Adımın çalıştırılmadan önce kontrol edilmesi gereken fonksiyon. Varsayılan None.
+        isRequired (bool, optional): Adımın gerekli olup olmadığını belirler. Varsılan False.
+        timeout (int, optional): Adımın zaman aşımı süresi (milisaniye cinsinden). Varsayılan None.
         """
         self.name = name
         self.function = function
         self.checkFunction = checkFunction
         self.preCheckFunction = preCheckFunction
         self.is_completed = False
+        self.isRequired = isRequired
         self.timeout = timeout
 
 class StepController:
@@ -29,7 +33,7 @@ class StepController:
         self.steps = []
         self.is_all_done = False
 
-    def add_step(self, step):
+    def add_step(self, step: Step):
         """
         Adım ekler.
 

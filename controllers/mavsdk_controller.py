@@ -6,7 +6,6 @@ import asyncio
 import functools
 import mavsdk
 from mavsdk import System
-print(mavsdk.__file__)
 
 def check_connected(func):
     @functools.wraps(func)
@@ -19,10 +18,9 @@ def check_connected(func):
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
-    def __init__(self, system_address="udpin://0.0.0.0:14540", telemetry_timeout=5, connection_timeout=100):
+    def __init__(self, system_address="udpin://0.0.0.0:14540", connection_timeout=100):
         self.drone = System()
         self.connection_url = system_address
-        self.telemetry_timeout = telemetry_timeout
         self.connection_timeout = connection_timeout
         self.is_connected = False
         self.general_status = {
@@ -40,8 +38,8 @@ class MAVSDKController:
         """
         Drone'un sistem bağlantısını bekler ve doğrular.
         """
-        start_time = time.time()
-        while time.time() - start_time < self.connection_timeout:
+        start_time = time.time()*1000
+        while time.time()*1000 - start_time < self.connection_timeout:
             try:
                 async for state in self.drone.core.connection_state():
                     if state.is_connected:
