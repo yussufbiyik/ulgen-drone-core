@@ -14,6 +14,7 @@ from controllers.xbee_controller import XBeeController
 
 from utils.pid import PID
 from utils.apf import APF
+from utils.formation_utililties import distance_meters, latlon_to_ned, detect_pose
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 
@@ -187,28 +188,7 @@ class DroneController:
             logging.info(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et
     
-    # PID & APF Mekanizmaları
-    def distance_meters(self, lat1, lon1, lat2, lon2):
-        # Haversine formülü ile mesafe hesaplama
-        R = 6371000
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
-        a = (math.sin(dlat / 2) ** 2 +
-             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-             math.sin(dlon / 2) ** 2)
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        return R * c
-
-    def latlon_to_ned(self, target_lat, target_lon, current_lat, current_lon):
-        # GPS koordinatlarını NED düzlemine çevir
-        d_north = self.distance_meters(current_lat, current_lon, target_lat, current_lon)
-        d_east = self.distance_meters(current_lat, current_lon, current_lat, target_lon)
-        if target_lat < current_lat:
-            d_north *= -1
-        if target_lon < current_lon:
-            d_east *= -1
-        return d_north, d_east
-
+    # PID & APF Mekanizmaları (192-280+ Çarpışma Önleyici)
     def clamp_velocity(self, v, limit=1.0):
         """
         Hızı sınırlar.
@@ -235,7 +215,7 @@ class DroneController:
         current_data = await self.MAVSDKController.get_general_info()
         current_position = current_data["gps_position"]
 
-        d_north, d_east = self.latlon_to_ned(
+        d_north, d_east = latlon_to_ned(
             target_position["latitude"], target_position["longitude"],
             current_position["latitude"], current_position["longitude"]
         )
@@ -414,7 +394,7 @@ class DroneController:
         general_info = await self.MAVSDKController.get_general_info()
         gps_position = general_info["gps_position"]
         logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-        if (self.distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
+        if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
             logging.info("Drone hedef konuma ulaştı.")
             return True
         return False
