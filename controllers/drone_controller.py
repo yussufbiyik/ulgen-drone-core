@@ -302,8 +302,6 @@ class DroneController:
     async def arm_check(self):
         """
         Drone'un arm durumunu kontrol eder.
-        
-        :return: True eğer drone arm edildiyse; aksi halde False
         """
         async for is_armed in self.drone.telemetry.armed():
             return is_armed
@@ -317,8 +315,6 @@ class DroneController:
     async def wait_for_broadcast_check(self):
         """
         Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
-        
-        :return: True eğer en az bir komşu varsa; aksi halde False
         """
         if len(self.neighbors) > 0:
             logging.info(f"Komşular: {self.neighbors}")
@@ -343,8 +339,6 @@ class DroneController:
         """
         Drone'un kalkış öncesi konum kontrol fonksiyonu.
         Bu, drone'un kalkış yapmadan önceki konumunu kontrol eder.
-
-        :return: True eğer drone'un kalkış öncesi konumu ayarlandıysa; aksi halde False
         """
         if self.pre_takeoff_location is not None:
             logging.info(f"Kalkış öncesi konum belirlenmesi başarılı: {self.pre_takeoff_location}")
@@ -410,8 +404,6 @@ class DroneController:
         """
         Drone'un disarm edilmeden önceki durumunu kontrol eder.
         Şartın sağlanması için drone'un havada olmaması gerekir.
-        
-        :return: True eğer drone havada değilse; aksi halde False
         """
         async for is_in_air in self.drone.telemetry.in_air():
             return not is_in_air
@@ -423,8 +415,6 @@ class DroneController:
     async def disarm_check(self):
         """
         Drone'un disarm durumunu kontrol eder.
-        
-        :return: True eğer drone disarm edildiyse; aksi halde False
         """
         is_armed = await self.drone.action.is_armed()
         return not is_armed
