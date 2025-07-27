@@ -46,30 +46,30 @@ SERVER_IP = "127.0.0.1"
 SERVER_PORT = 5005
 
 class DroneController:
-    def __init__(self, xbee_port = None, mavsdk_port="udpin://0.0.0.0:14540", isTesting=False):
+    def __init__(self, xbee_controller: XBeeController, mavsdk_controller: MAVSDKController, isTesting=False):
         self.isTesting = isTesting
-        self.XBeeController = None
+
         self.socket = None
+        self.xbee_controller = xbee_controller
+        self.xbee_controller.message_received_callback = self.handle_message_received
+        self.xbee_id = self.xbee_controller.address if not self.isTesting else "TESTING"
+
+        self.mavsdk_controller = mavsdk_controller
+        self.drone = self.mavsdk_controller.drone
+        
         if not self.isTesting:
-            logging.info(f"XBee portu: {xbee_port} olarak ayarlandı.")
-            self.XBeeController = XBeeController(
-                port=xbee_port,
-                message_received_callback=self.handle_message_received
-            )
-            self.XBeeController.listen()
-            logging.info("XBeeController başlatıldı.")
+            self.xbee_controller.listen()
+            logging.info("XBee iletişimi başlatıldı.")
         else:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             threading.Thread(target=self.listen_to_socket).start()
+            logging.info("Soket iletişimi başlatıldı.")
         asyncio.create_task(self.broadcast_drone_status())
-        self.xbee_id = self.XBeeController.address if xbee_port is not None else "TESTING"
-        self.MAVSDKController = MAVSDKController(system_address=mavsdk_port)
-        self.drone = self.MAVSDKController.drone
         self.pre_takeoff_location = None  # Aslında home gibi
-        self.offboardController = {
-            "isActive": False,
-            "altitudeToKeep": 0.0,
-            "targetPosition": None,
+        self.offboard_controller = {
+            "is_active": False,
+            "altitude_to_keep": 0.0,
+            "target_position": None,
         }
         # Her eksen üzerinde kontrol sahibi olmak için
         # PID kontrolörleri eksen başına ayrı ayrı tanımlanır.
@@ -82,13 +82,16 @@ class DroneController:
         
         self.neighbors = []
 
-    # XBee ile alakalı işlemler
+    # XBee ve simülasyon içi iletişim ile alakalı işlemler
     def listen_to_socket(self):
+        """
+        Soket üzerinden gelen verileri dinler ve işler.
+        """
         while True:
             data, _ = self.socket.recvfrom(2048)
             try:
                 msg = json.loads(data.decode())
-                logging.info(f"{msg['sender']}. Drone'dan mesaj alındı, zaman: {msg['timestamp']}, içerik: {msg['data']}")
+                logging.info(f"{msg['sender']} adresindeki drondan mesaj alındı, zaman: {msg['timestamp']}, içerik: {msg['data']}")
                 self.handle_message_received(msg)
             except Exception as e:
                 logging.error(f"Mesaj çözümlenemedi: {e}")
@@ -102,7 +105,7 @@ class DroneController:
         # Örnek data
         # 1,1,6,50,47.3977058,8.5460053,1.3350
         if not recieved_message.sender:
-            logging.error(f"Mesajın göndereni belirtilmemiş, es geçiliyor: {recieved_message.data}")
+            logging.error(f"Mesajın göndereni belirtilmemiş, geçiliyor: {recieved_message.data}")
             return
         message_raw = recieved_message.data.split(',')
         if len(message_raw) < 10:
@@ -142,20 +145,16 @@ class DroneController:
     async def broadcast_drone_status(self):
         """
         Bu fonksiyon, dronun genel durumunu alır ve XBee üzerinden broadcast eder
-
-        param XBeeController: XBee kontrolcüsü
-        param MAVSDKController: MAVSDK kontrolcüsü
-
         """
         while True:
             # Test modunda XBee yerine socket kullanılıyor
             if self.isTesting:
-                if not self.MAVSDKController.is_connected:
+                if not self.mavsdk_controller.is_connected:
                     logging.warning("Test modunda, MAVSDKController bağlı değil.")
                     await asyncio.sleep(1)
                     continue
                 logging.info("Test modunda, broadcast işlemi için XBee yerine socket kullanılıyor.")
-                data = await self.MAVSDKController.get_general_info()
+                data = await self.mavsdk_controller.get_general_info()
                 message = format_broadcast_message(data)
                 try:
                     self.socket.sendto(
@@ -168,20 +167,20 @@ class DroneController:
                 await asyncio.sleep(1)
                 continue
             # MAVSDKController ve XBeeController'ın bağlı olup olmadığını kontrol et
-            if not self.MAVSDKController.is_connected or not self.XBeeController.device.is_open():
-                logging.info(self.MAVSDKController.is_connected)
-                logging.info(self.XBeeController.device.is_open())
+            if not self.mavsdk_controller.is_connected or not self.xbee_controller.device.is_open():
+                logging.info(self.mavsdk_controller.is_connected)
+                logging.info(self.xbee_controller.device.is_open())
                 logging.warning("MAVSDKController veya XBee henüz bağlı değil, durum broadcast edilemiyor, broadcast beklemede.")
                 await asyncio.sleep(1)
                 continue
-            data = await self.MAVSDKController.get_general_info()
+            data = await self.mavsdk_controller.get_general_info()
             if data["health"] is None:
                 logging.warning("Drone'un durumu henüz alınamadı, broadcast beklemede.")
                 await asyncio.sleep(1)
                 continue
             message = format_broadcast_message(data)
             try:
-                self.XBeeController.send_broadcast_message(message)
+                self.xbee_controller.send_broadcast_message(message)
             except Exception as e:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
@@ -202,7 +201,7 @@ class DroneController:
         """
         APF: Komşu dronelardan kaçınmak için hız vektörü üretir.
         """
-        current_data = await self.MAVSDKController.get_general_info()
+        current_data = await self.mavsdk_controller.get_general_info()
         current_position = current_data["gps_position"]
 
         vx, vy = self.apf.compute_apf(current_position, self.neighbors)
@@ -212,7 +211,7 @@ class DroneController:
         """
         PID kontrolü: hedef pozisyona yönelmek için hız vektörü üretir.
         """
-        current_data = await self.MAVSDKController.get_general_info()
+        current_data = await self.mavsdk_controller.get_general_info()
         current_position = current_data["gps_position"]
 
         d_north, d_east = latlon_to_ned(
@@ -227,7 +226,7 @@ class DroneController:
 
     async def background_offboard_controller(self):
         while True:
-            if not self.offboardController["isActive"]:
+            if not self.offboard_controller["is_active"]:
                 logging.debug("OffboardController kapalı, kontrol döngüsü atlanıyor.")
                 await asyncio.sleep(0.1)
                 continue
@@ -244,8 +243,8 @@ class DroneController:
                     await asyncio.sleep(0.5)
                     continue
 
-            target_pos = self.offboardController.get("targetPosition")
-            alt_to_keep = self.offboardController.get("altitudeToKeep")
+            target_pos = self.offboard_controller.get("target_position")
+            alt_to_keep = self.offboard_controller.get("altitude_to_keep")
 
             if target_pos is None:
                 logging.warning("Hedef konum ayarlanmamış. Hover moduna geçiliyor.")
@@ -256,7 +255,7 @@ class DroneController:
                 continue
 
             # Güncel konum bilgisi
-            current_data = await self.MAVSDKController.get_general_info()
+            current_data = await self.mavsdk_controller.get_general_info()
             current_position = current_data["gps_position"]
 
             # PID ve APF ile hızları hesapla
@@ -287,7 +286,7 @@ class DroneController:
         Drone'un doğru verileri almasını bekler.
         """
         while True:
-            general_info = await self.MAVSDKController.get_general_info()
+            general_info = await self.mavsdk_controller.get_general_info()
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
                 logging.info(f"Doğru veriler alındı.")
@@ -332,7 +331,7 @@ class DroneController:
         Bu, kalkış yüksekliğini hesaplamak için kullanılır.
         """
         while True:
-            general_info = await self.MAVSDKController.get_general_info()
+            general_info = await self.mavsdk_controller.get_general_info()
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
                 self.pre_takeoff_location = gps_position
@@ -365,7 +364,7 @@ class DroneController:
         """
         Drone'un irtifasını kontrol eden fonksiyon.
         """
-        general_info = await self.MAVSDKController.get_general_info()
+        general_info = await self.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         climbed = abs(gps_position["altitude"] - self.pre_takeoff_location["altitude"])
         logging.info(f"Drone hedef irtifa ile {climbed} metre mesafede.")
@@ -376,7 +375,7 @@ class DroneController:
 
     async def enable_offboard_controller(self):
         logging.info("OffboardController aktifleştiriliyor...")
-        self.offboardController["isActive"] = True
+        self.offboard_controller["is_active"] = True
         asyncio.create_task(
             self.background_offboard_controller()
         )
@@ -388,10 +387,10 @@ class DroneController:
     
     async def goto_location_with_offboard(self, target_location):
         logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
-        self.offboardController["targetPosition"] = target_location
-        self.offboardController["altitudeToKeep"] = target_location["altitude"]
+        self.offboard_controller["target_position"] = target_location
+        self.offboard_controller["altitude_to_keep"] = target_location["altitude"]
     async def goto_location_check(self, target_location):
-        general_info = await self.MAVSDKController.get_general_info()
+        general_info = await self.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
         if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
@@ -404,7 +403,7 @@ class DroneController:
         Drone'a iniş komutu gönderir
         """
         logging.info("Drone iniş yapıyor...")
-        self.offboardController["isActive"] = False
+        self.offboard_controller["is_active"] = False
         await self.drone.action.land()
 
     async def disarm_pre_check(self):
@@ -436,11 +435,22 @@ async def main():
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
     isTesting = True
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
     mavsdk_port = lambda: "udp://0.0.0.0:14540" if isTesting else "serial:///dev/ttyACM0:57600"
+    mavsdk_controller = MAVSDKController(
+        system_address=mavsdk_port(),
+    )
+    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_controller = None
+    # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
+    # Eğer test modunda değilsek, XBeeController'ı tanımlarız
+    if not isTesting:
+        xbee_controller = XBeeController(
+            port=xbee_port(),
+            message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
+        )
     drone_controller = DroneController(
-            xbee_port=xbee_port(),
-            mavsdk_port=mavsdk_port(),
+            xbee_controller,
+            mavsdk_controller,
             isTesting=isTesting
         )
     step_controller = StepController()
