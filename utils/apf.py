@@ -26,9 +26,6 @@ class APF:
 
         for neighbor in neighbors:
             neighbor_position = neighbor["data"]["gps_position"]
-            logging.debug(f"Komşu Konumu: {neighbor_position}")
-            # dx = current_position["latitude"] - neighbor_position["latitude"]
-            # dy = current_position["longitude"] - neighbor_position["longitude"]
             dx, dy = latlon_to_ned(
                 neighbor_position["latitude"],
                 neighbor_position["longitude"],
@@ -43,9 +40,9 @@ class APF:
             )
 
             if distance > self.influence_radius:
-                logging.info(f"Komşu {distance} metre uzakta, itme kuvveti hesaplanmıyor.")
+                logging.debug(f"Komşu {distance} metre uzakta, itme kuvveti hesaplanmıyor.")
                 continue  # çok uzakta ise görmezden gel
-            logging.info(f"Komşu {distance} metre mesafede, itme kuvveti hesaplanıyor.")
+            logging.debug(f"Komşu {distance} metre mesafede, itme kuvveti hesaplanıyor.")
 
             fx = self.repulsive_gain * dx / distance
             fy = self.repulsive_gain * dy / distance

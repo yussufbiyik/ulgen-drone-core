@@ -56,6 +56,7 @@ class DroneController:
         # XBee
         self.xbee_controller = xbee_controller
         self.xbee_id = self.xbee_controller.address if not self.isTesting else self.fake_id
+        self.time_waited_for_other_drones = 0 
         # MAVSDK
         self.mavsdk_controller = mavsdk_controller
         self.drone = self.mavsdk_controller.drone
@@ -95,7 +96,7 @@ class DroneController:
             data, _ = self.socket.recvfrom(2048)
             try:
                 msg = json.loads(data.decode())
-                logging.info(f"{msg['sender']} adresindeki drondan mesaj alındı, zaman: {msg['timestamp']}, içerik: {msg['data']}")
+                logging.debug(f"{msg['sender']} adresindeki drondan mesaj alındı, zaman: {msg['timestamp']}, içerik: {msg['data']}")
                 self.handle_message_received(msg)
             except Exception as e:
                 logging.error(f"Mesaj çözümlenemedi: {e}")
@@ -116,9 +117,9 @@ class DroneController:
         if len(message_raw) < 7:
             logging.error(f"Beklenmeyen mesaj formatı: {recieved_message['data']}")
             return
-        logging.info("Komşu drone mesajı alındı, işleniyor...")
+        logging.debug("Komşu drone mesajı alındı, işleniyor...")
         if not any(neighbor["sender"] == recieved_message["sender"] for neighbor in self.neighbors):
-            logging.info(f"Yeni komşu drone bulundu: {recieved_message['sender']}")
+            logging.debug(f"Yeni komşu drone bulundu: {recieved_message['sender']}")
             message_data = {
                 "sender": recieved_message["sender"],
                 "timestamp": recieved_message["timestamp"],
@@ -135,9 +136,9 @@ class DroneController:
                 }
             }
             self.neighbors.append(message_data)
-            logging.info(f"Yeni komşu eklendi: {recieved_message['sender']}.\nKomşu ile aradaki gecikme: {recieved_message['timestamp'] - time.time()} saniye.")
+            logging.info(f"Yeni komşu eklendi: {recieved_message['sender']} ({recieved_message['timestamp'] - time.time()}ms).")
         else:
-            logging.info(f"Komşu zaten mevcut: {recieved_message['sender']}, güncelleniyor.")
+            logging.info(f"Komşu zaten mevcut:, güncelleniyor ({recieved_message['timestamp'] - time.time()}ms).")
             for neighbor in self.neighbors:
                 if neighbor["sender"] == recieved_message["sender"]:
                     neighbor["data"]["armable"] = bool(int(message_raw[0]))
@@ -233,7 +234,7 @@ class DroneController:
                         VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
                     )
                     await self.drone.offboard.start()
-                    logging.info("Offboard modu başlatıldı.")
+                    logging.debug("Offboard modu başlatıldı.")
                 except OffboardError as e:
                     logging.error(f"Offboard moduna geçiş başarısız: {e}")
                     await asyncio.sleep(0.5)
@@ -279,15 +280,15 @@ class DroneController:
     # Sık kullanılan drone işlemleri
     async def wait_for_proper_data(self):
         """
-        Drone'un doğru verileri almasını bekler.
+        Drone'un geçerli verileri almasını bekler.
         """
         while True:
             general_info = await self.mavsdk_controller.get_general_info()
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
-                logging.info(f"Doğru veriler alındı.")
+                logging.info(f"Geçerli veriler alındı.")
                 break
-            logging.info("Doğru veriler henüz alınamadı, bekleniyor...")
+            logging.info("Geçerli veriler henüz alınamadı, bekleniyor...")
             await asyncio.sleep(0.5)
 
     async def arm(self):
@@ -306,14 +307,19 @@ class DroneController:
         """
         Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
         """
-        logging.info("Drone diğer dronların broadcast mesajlarını bekliyor...")
-        logging.info("Diğer bir drone keşfedildi.")
+        logging.info("Diğer dronların broadcast mesajları bekleniyor...")
     async def wait_for_broadcast_check(self):
         """
         Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
         """
         if len(self.neighbors) > 0:
-            logging.info(f"Komşular: {self.neighbors}")
+            logging.info(f"Şu anda {len(self.neighbors)} tane komşu drone var.")
+            logging.info("Daha başka dronların olma ihtimaline karşın biraz daha bekleniyor.")
+            if self.time_waited_for_other_drones < 100:
+                self.time_waited_for_other_drones += 1
+                await asyncio.sleep(1)
+                return False
+            logging.info("Tüm dronların broadcast mesajları alındığı varsayılıyor, kontrol tamamlandı.")
             return True
         return False
     
@@ -327,9 +333,9 @@ class DroneController:
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
                 self.pre_takeoff_location = gps_position
-                logging.info(f"Kalkış öncesi konum ayarlandı: {self.pre_takeoff_location}")
+                logging.debug(f"Kalkış öncesi konum ayarlandı: {self.pre_takeoff_location}")
                 break
-            logging.info("GPS konum bilgisi henüz alınamadı, bekleniyor...")
+            logging.warning("GPS konum bilgisi henüz alınamadı, bekleniyor...")
             await asyncio.sleep(0.5)
     async def pre_takeoff_location_check(self):
         """
@@ -337,7 +343,7 @@ class DroneController:
         Bu, drone'un kalkış yapmadan önceki konumunu kontrol eder.
         """
         if self.pre_takeoff_location is not None:
-            logging.info(f"Kalkış öncesi konum belirlenmesi başarılı: {self.pre_takeoff_location}")
+            logging.debug(f"Kalkış öncesi konum belirlenmesi başarılı: {self.pre_takeoff_location}")
             return True
         logging.warning("Kalkış öncesi konum henüz ayarlanmamış.")
         return False
@@ -357,9 +363,9 @@ class DroneController:
         general_info = await self.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         climbed = abs(gps_position["altitude"] - self.pre_takeoff_location["altitude"])
-        logging.info(f"Drone hedef irtifa ile {climbed} metre mesafede.")
+        logging.debug(f"Drone hedef irtifa ile {climbed} metre mesafede.")
         if abs(target_altitude - climbed) <= 0.2:
-            logging.debug(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
+            logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
             return True
         return False
 
@@ -382,7 +388,7 @@ class DroneController:
     async def goto_location_check(self, target_location):
         general_info = await self.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
-        logging.info(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+        logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
         if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
             logging.info("Drone hedef konuma ulaştı.")
             return True
@@ -423,7 +429,7 @@ async def main():
     isTesting = True
     # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
     # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
-    sim_instance = 2
+    sim_instance = 0
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
@@ -497,7 +503,7 @@ async def main():
         drone_controller.wait_for_broadcast,
         drone_controller.wait_for_broadcast_check,
         drone_controller.wait_for_broadcast_check,
-        timeout=30))
+        timeout=1000))
     # Kalkış yapar
     target_altitude = 10  # Kalkış yüksekliği
     step_controller.add_step(Step(
