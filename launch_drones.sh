@@ -71,8 +71,15 @@ do
   sleep 3
 done
 
+# Socket iletişim servisi başlatılıyor
 echo ""
-echo "✅ Tüm dronelar başarıyla başlatıldı. Kapatmak için Ctrl+C'ye basın."
+echo "🔌 Socket iletişimi başlatılıyor..."
+python ./utils/socket_communication.py &
+
+VIRTUAL_COMM_PID=$!
+
+echo ""
+echo "✅ Tüm dronlar ve socket iletişim protoklü başarıyla başlatıldı. Kapatmak için Ctrl+C'ye basın."
 
 # Temizlik fonksiyonu: Ctrl+C ile kapatınca tüm süreçleri öldürür
 temizlik() {
@@ -89,7 +96,10 @@ temizlik() {
     kill -9 $pid 2>/dev/null
   done
 
-  echo "✅ Tüm süreçler başarıyla kapatıldı. Görüşmek üzere!"
+  echo "virtual_communication.py PID $VIRTUAL_COMM_PID sonlandırılıyor..."
+kill -9 $VIRTUAL_COMM_PID 2>/dev/null
+
+  echo "✅ Tüm işlemler başarıyla sonlandırıldı. Görüşmek üzere!"
   exit 0
 }
 
