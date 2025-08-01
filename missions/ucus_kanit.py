@@ -5,6 +5,8 @@ from core.mission import Mission
 
 from controllers.step_controller import Step
 from controllers.drone_controller import DroneController
+from controllers.mavsdk_controller import MAVSDKController
+from controllers.xbee_controller import XBeeController
 
 class KTRVideoMission(Mission):
     def __init__(self, drone: DroneController, **kwargs):
@@ -73,15 +75,30 @@ async def main():
         },
     ]
     isTesting = True
+    # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
+    # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
+    sim_instance = 2
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    mavsdk_controller = MAVSDKController(
+        system_address=mavsdk_port(),
+        port=50060+sim_instance,
+    )
     xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
-    mavsdk_port = lambda: "udp://0.0.0.0:14540" if isTesting else "serial:///dev/ttyACM0:57600"
-    drone_controller = DroneController(
-            xbee_port=xbee_port(),
-            mavsdk_port=mavsdk_port(),
-            isTesting=isTesting,
+    xbee_controller = None
+    # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
+    # Eğer test modunda değilsek, XBeeController'ı tanımlarız
+    if not isTesting:
+        xbee_controller = XBeeController(
+            port=xbee_port(),
+            message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
         )
-    await drone_controller.MAVSDKController.connect()
-    while not drone_controller.MAVSDKController.is_connected:
+    drone_controller = DroneController(
+            xbee_controller,
+            mavsdk_controller,
+            isTesting=isTesting
+        )
+    await drone_controller.mavsdk_controller.connect()
+    while not drone_controller.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")

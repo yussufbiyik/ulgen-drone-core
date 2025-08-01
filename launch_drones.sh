@@ -15,15 +15,7 @@ fi
 PX4_BIN="$HOME/PX4-Autopilot/build/px4_sitl_default/bin/px4"
 if [ ! -f "$PX4_BIN" ]; then
   echo "❌ Hata: PX4 çalıştırılabilir dosyası bulunamadı: $PX4_BIN"
-  echo "Lütfen PX4'ü tekrar derleyin ve ardından bu scripti çalıştırın."
-  exit 1
-fi
-
-# mavsdk_server binary yolu
-MAVSDK_SERVER=$(python -c "import os, mavsdk; print(os.path.join(os.path.dirname(mavsdk.__file__), 'bin', 'mavsdk_server'))")
-if [ ! -f "$MAVSDK_SERVER" ]; then
-  echo "❌ Hata: mavsdk_server bulunamadı!"
-  echo "pip install mavsdk komutu ile yüklemeyi deneyin."
+  echo "Lütfen PX4'ü tekrar derleyin ve tekrar deneyin."
   exit 1
 fi
 
@@ -33,7 +25,7 @@ mkdir -p "$LOG_DIR"
 
 # Port başlangıç değerleri
 BASLANGIC_MAVLINK_PORT=14540       # PX4 MAVLink UDP portu (dinleme)
-BASLANGIC_MAVSDK_REMOTE_PORT=14560 # mavsdk_server'ın dinleyeceği UDP portu
+BASLANGIC_MAVSDK_REMOTE_PORT=14540 # mavsdk_server'ın dinleyeceği UDP portu
 BASLANGIC_MAVSDK_TCP_PORT=50060    # mavsdk_server TCP portu (Python için)
 
 # PID dizileri
@@ -55,9 +47,8 @@ do
   echo "  PX4 UDP Dinleme Portu      : $MAVLINK_PORT"
   echo "  PX4 MAVLink Gönderme Portu : $PX4_REMOTE_PORT"
   echo "  MAVSDK Server TCP Portu    : $MAVSDK_TCP_PORT"
-  echo "  MAVSDK Bağlantı Örnekleri:"
 
-  echo "    Python (UDP ile):"
+  echo "    Örnek Bağlantı Kodu:"
   echo "      drone = System(port=$MAVSDK_TCP_PORT)"
   echo "      await drone$i.connect(system_address=\"udp://0.0.0.0:$MAVLINK_PORT\")"
 
@@ -71,9 +62,6 @@ do
 
   PX4_PID=$!
   PX4_PIDS+=($PX4_PID)
-
-  # mavsdk_server başlat
-  $MAVSDK_SERVER udp://:$PX4_REMOTE_PORT -p $MAVSDK_TCP_PORT > "$LOG_DIR/mavsdk_server_$i.log" 2>&1 &
 
   MAVSDK_PID=$!
   MAVSDK_PIDS+=($MAVSDK_PID)

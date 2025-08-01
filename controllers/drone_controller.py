@@ -4,6 +4,7 @@ import threading
 import time
 import asyncio
 import numpy as np
+import random
 import json
 import logging
 import math
@@ -49,10 +50,13 @@ class DroneController:
     def __init__(self, xbee_controller: XBeeController, mavsdk_controller: MAVSDKController, isTesting=False):
         self.isTesting = isTesting
 
+        # Test modunda soket üzerinden iletişim kurmak için
         self.socket = None
+        self.fake_id = random.randint(10000, 99999) if isTesting else None
+        # XBee
         self.xbee_controller = xbee_controller
-        self.xbee_id = self.xbee_controller.address if not self.isTesting else "TESTING"
-
+        self.xbee_id = self.xbee_controller.address if not self.isTesting else self.fake_id
+        # MAVSDK
         self.mavsdk_controller = mavsdk_controller
         self.drone = self.mavsdk_controller.drone
         
@@ -78,9 +82,7 @@ class DroneController:
         self.pid_e = PID(Kp=0.1, Ki=0.0, Kd=0.1)
         # Yükseklik ekseni
         self.pid_z = PID(Kp=0.3, Ki=0.0, Kd=0.3)
-        self.apf = APF(
-            influence_radius=1.0,
-        )
+        self.apf = APF()
         
         self.neighbors = []
 
@@ -106,17 +108,20 @@ class DroneController:
         """
         # Örnek data
         # 1,1,6,50,47.3977058,8.5460053,1.3350
-        if not recieved_message.sender:
-            logging.error(f"Mesajın göndereni belirtilmemiş, geçiliyor: {recieved_message.data}")
+
+        if not recieved_message["sender"]:
+            logging.error(f"Mesajın göndereni belirtilmemiş, geçiliyor.")
             return
-        message_raw = recieved_message.data.split(',')
-        if len(message_raw) < 10:
-            logging.error(f"Beklenmeyen mesaj formatı: {recieved_message.data}")
+        message_raw = recieved_message['data'].split(',')
+        if len(message_raw) < 7:
+            logging.error(f"Beklenmeyen mesaj formatı: {recieved_message['data']}")
             return
-        if recieved_message.sender not in self.neighbors:
+        logging.info("Komşu drone mesajı alındı, işleniyor...")
+        if not any(neighbor["sender"] == recieved_message["sender"] for neighbor in self.neighbors):
+            logging.info(f"Yeni komşu drone bulundu: {recieved_message['sender']}")
             message_data = {
-                "sender": recieved_message.sender,
-                "timestamp": recieved_message.timestamp,
+                "sender": recieved_message["sender"],
+                "timestamp": recieved_message["timestamp"],
                 "data": {
                     "armable": bool(int(message_raw[0])),
                     "armed": bool(int(message_raw[1])),
@@ -130,11 +135,11 @@ class DroneController:
                 }
             }
             self.neighbors.append(message_data)
-            logging.info(f"Yeni komşu eklendi: {recieved_message.sender}.\nKomşu ile aradaki gecikme: {recieved_message.timestamp - time.time()} saniye.")
+            logging.info(f"Yeni komşu eklendi: {recieved_message['sender']}.\nKomşu ile aradaki gecikme: {recieved_message['timestamp'] - time.time()} saniye.")
         else:
-            logging.info(f"Komşu zaten mevcut: {recieved_message.sender}, güncelleniyor.")
+            logging.info(f"Komşu zaten mevcut: {recieved_message['sender']}, güncelleniyor.")
             for neighbor in self.neighbors:
-                if neighbor["sender"] == recieved_message.sender:
+                if neighbor["sender"] == recieved_message["sender"]:
                     neighbor["data"]["armable"] = bool(int(message_raw[0]))
                     neighbor["data"]["armed"] = bool(int(message_raw[1]))
                     neighbor["data"]["flight_mode"] = int(message_raw[2])
@@ -149,30 +154,9 @@ class DroneController:
         Bu fonksiyon, dronun genel durumunu alır ve XBee üzerinden broadcast eder
         """
         while True:
-            # Test modunda XBee yerine socket kullanılıyor
-            if self.isTesting:
-                if not self.mavsdk_controller.is_connected:
-                    logging.warning("Test modunda, MAVSDKController bağlı değil.")
-                    await asyncio.sleep(1)
-                    continue
-                logging.info("Test modunda, broadcast işlemi için XBee yerine socket kullanılıyor.")
-                data = await self.mavsdk_controller.get_general_info()
-                message = format_broadcast_message(data)
-                try:
-                    self.socket.sendto(
-                        message.encode('utf-8'),
-                        (SERVER_IP, SERVER_PORT)
-                    )
-                except Exception as e:
-                    logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
-                logging.info(f"Güncel durum broadcast edildi: {message}")
-                await asyncio.sleep(1)
-                continue
             # MAVSDKController ve XBeeController'ın bağlı olup olmadığını kontrol et
-            if not self.mavsdk_controller.is_connected or not self.xbee_controller.device.is_open():
-                logging.info(self.mavsdk_controller.is_connected)
-                logging.info(self.xbee_controller.device.is_open())
-                logging.warning("MAVSDKController veya XBee henüz bağlı değil, durum broadcast edilemiyor, broadcast beklemede.")
+            if not self.mavsdk_controller.is_connected:
+                logging.warning("MAVSDKController bağlı değil, durum broadcast edilemiyor, broadcast beklemede.")
                 await asyncio.sleep(1)
                 continue
             data = await self.mavsdk_controller.get_general_info()
@@ -182,7 +166,17 @@ class DroneController:
                 continue
             message = format_broadcast_message(data)
             try:
-                self.xbee_controller.send_broadcast_message(message)
+                if self.isTesting:
+                    self.socket.sendto(
+                        message.encode('utf-8'),
+                        (SERVER_IP, SERVER_PORT)
+                    )
+                else:
+                    if not self.xbee_controller.device.is_open():
+                        logging.warning("XBeeController bağlı değil, durum broadcast edilemiyor, broadcast beklemede.")
+                        await asyncio.sleep(1)
+                        continue
+                    self.xbee_controller.send_broadcast_message(message)
             except Exception as e:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
@@ -269,8 +263,8 @@ class DroneController:
             vz = self.pid_z.compute(error_z, 0.1)
 
             # Hızları birleştir ve sınırla
-            vx = self.clamp_velocity(pid_vx + apf_vx)
-            vy = self.clamp_velocity(pid_vy + apf_vy)
+            vx = self.clamp_velocity(pid_vx) + apf_vx
+            vy = self.clamp_velocity(pid_vy) + apf_vy
             vz = self.clamp_velocity(vz)
 
             try:
@@ -427,11 +421,13 @@ async def main():
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
     isTesting = True
+    # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
+    # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
     sim_instance = 2
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
-        port=50060+ sim_instance,
+        port=50060+sim_instance,
     )
     xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
     xbee_controller = None
