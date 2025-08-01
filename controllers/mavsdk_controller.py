@@ -18,8 +18,10 @@ def check_connected(func):
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
-    def __init__(self, system_address="udpin://0.0.0.0:14540", connection_timeout=100):
-        self.drone = System()
+    def __init__(self, system_address="udpin://0.0.0.0:14540", port=50050, connection_timeout=100):
+        self.drone = System(
+            port=port
+        )
         self.connection_url = system_address
         self.connection_timeout = connection_timeout
         self.is_connected = False

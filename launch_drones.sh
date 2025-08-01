@@ -15,8 +15,7 @@ fi
 PX4_BIN="$HOME/PX4-Autopilot/build/px4_sitl_default/bin/px4"
 if [ ! -f "$PX4_BIN" ]; then
   echo "❌ Hata: PX4 çalıştırılabilir dosyası bulunamadı: $PX4_BIN"
-  echo "Lütfen önce şunu çalıştırın:"
-  echo "  cd ~/PX4-Autopilot && make px4_sitl_default"
+  echo "Lütfen PX4'ü tekrar derleyin ve ardından bu scripti çalıştırın."
   exit 1
 fi
 
@@ -33,7 +32,7 @@ LOG_DIR="$HOME/drone_logs"
 mkdir -p "$LOG_DIR"
 
 # Port başlangıç değerleri
-BASLANGIC_MAVLINK_PORT=18572       # PX4 MAVLink UDP portu (dinleme)
+BASLANGIC_MAVLINK_PORT=14540       # PX4 MAVLink UDP portu (dinleme)
 BASLANGIC_MAVSDK_REMOTE_PORT=14560 # mavsdk_server'ın dinleyeceği UDP portu
 BASLANGIC_MAVSDK_TCP_PORT=50060    # mavsdk_server TCP portu (Python için)
 
@@ -58,13 +57,9 @@ do
   echo "  MAVSDK Server TCP Portu    : $MAVSDK_TCP_PORT"
   echo "  MAVSDK Bağlantı Örnekleri:"
 
-  echo "    Python (direct UDP):"
-  echo "      drone$i = System()"
-  echo "      await drone$i.connect(system_address=\"udp://127.0.0.1:$MAVLINK_PORT\")"
-
-  echo "    Python (via mavsdk_server):"
-  echo "      drone$i = System(mavsdk_server_address=\"localhost\", port=$MAVSDK_TCP_PORT)"
-  echo "      await drone$i.connect()"
+  echo "    Python (UDP ile):"
+  echo "      drone = System(port=$MAVSDK_TCP_PORT)"
+  echo "      await drone$i.connect(system_address=\"udp://0.0.0.0:$MAVLINK_PORT\")"
 
   # PX4 başlat
   PX4_SYS_AUTOSTART=4019 \

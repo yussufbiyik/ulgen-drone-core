@@ -51,13 +51,13 @@ class DroneController:
 
         self.socket = None
         self.xbee_controller = xbee_controller
-        self.xbee_controller.message_received_callback = self.handle_message_received
         self.xbee_id = self.xbee_controller.address if not self.isTesting else "TESTING"
 
         self.mavsdk_controller = mavsdk_controller
         self.drone = self.mavsdk_controller.drone
         
         if not self.isTesting:
+            self.xbee_controller.message_received_callback = self.handle_message_received
             self.xbee_controller.listen()
             logging.info("XBee iletişimi başlatıldı.")
         else:
@@ -74,11 +74,13 @@ class DroneController:
         # Her eksen üzerinde kontrol sahibi olmak için
         # PID kontrolörleri eksen başına ayrı ayrı tanımlanır.
         # Yatay eksen
-        self.pid_n = PID(Kp=0.15, Ki=0.0, Kd=0.15)
-        self.pid_e = PID(Kp=0.15, Ki=0.0, Kd=0.15)
+        self.pid_n = PID(Kp=0.1, Ki=0.0, Kd=0.1)
+        self.pid_e = PID(Kp=0.1, Ki=0.0, Kd=0.1)
         # Yükseklik ekseni
         self.pid_z = PID(Kp=0.3, Ki=0.0, Kd=0.3)
-        self.apf = APF()
+        self.apf = APF(
+            influence_radius=1.0,
+        )
         
         self.neighbors = []
 
@@ -425,9 +427,11 @@ async def main():
     Bu fonksiyon, drone'u arm eder, kalkış yapar, belirli bir yüksekliğe çıkar, iniş yapar ve disarm eder.
     """
     isTesting = True
-    mavsdk_port = lambda: "udp://0.0.0.0:14540" if isTesting else "serial:///dev/ttyACM0:57600"
+    sim_instance = 2
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
+        port=50060+ sim_instance,
     )
     xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
     xbee_controller = None
@@ -480,8 +484,8 @@ async def main():
         },
     ]
 
-    await drone_controller.MAVSDKController.connect()
-    while not drone_controller.MAVSDKController.is_connected:
+    await drone_controller.mavsdk_controller.connect()
+    while not drone_controller.mavsdk_controller.is_connected:
         logging.error("MAVSDK henüz bağlı değil, bağlanmaya çalışılıyor...")
         await asyncio.sleep(1)
     logging.info("MAVSDK bağlı.")
