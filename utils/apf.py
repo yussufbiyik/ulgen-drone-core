@@ -58,19 +58,3 @@ class APF:
         vy = force_y * 1e5
 
         return vx, vy
-
-"""
-	Task exception was never retrieved
-future: <Task finished name='Task-338' coro=<DroneController.background_offboard_controller() done, defined at /home/kimi/ulgen/drone-core/controllers/drone_controller.py:223> exception=TypeError("unsupported operand type(s) for ** or pow(): 'tuple' and 'int'")>
-Traceback (most recent call last):
-  File "/home/kimi/ulgen/drone-core/controllers/drone_controller.py", line 259, in background_offboard_controller
-    apf_vx, apf_vy = await self.apf_controller()
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/kimi/ulgen/drone-core/controllers/drone_controller.py", line 203, in apf_controller
-    vx, vy = self.apf.compute_apf(current_position, self.neighbors)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/kimi/ulgen/drone-core/utils/apf.py", line 43, in compute_apf
-    dist_sq = dx ** 2 + dy ** 2
-              ~~~^^~~
-TypeError: unsupported operand type(s) for ** or pow(): 'tuple' and 'int'
-"""
