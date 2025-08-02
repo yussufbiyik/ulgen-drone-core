@@ -4,7 +4,6 @@ import json
 import logging
 import asyncio
 import functools
-import mavsdk
 from mavsdk import System
 
 def check_connected(func):
@@ -19,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n
 
 class MAVSDKController:
     def __init__(self, system_address="udpin://0.0.0.0:14540", port=50050, connection_timeout=100):
-        self.drone = System(
+        self.mavsdk = System(
             port=port
         )
         self.connection_url = system_address
@@ -43,7 +42,7 @@ class MAVSDKController:
         start_time = time.time()*1000
         while time.time()*1000 - start_time < self.connection_timeout:
             try:
-                async for state in self.drone.core.connection_state():
+                async for state in self.mavsdk.core.connection_state():
                     if state.is_connected:
                         logging.info("Drone sistem bağlantısı doğrulandı.")
                         return True
@@ -60,7 +59,7 @@ class MAVSDKController:
         Drone ile bağlantı kurar.
         """
         try:
-            await self.drone.connect(
+            await self.mavsdk.connect(
                 system_address=self.connection_url)
             if await self.wait_for_connection():
                 self.is_connected = True
@@ -119,7 +118,7 @@ class MAVSDKController:
         Drone'un kalibrasyon vb. bilgilerini döndürür.
         """
         try:
-            async for health in self.drone.telemetry.health():
+            async for health in self.mavsdk.telemetry.health():
                 if health.is_magnetometer_calibration_ok and \
                    health.is_accelerometer_calibration_ok and \
                    health.is_gyrometer_calibration_ok and \
@@ -139,7 +138,7 @@ class MAVSDKController:
         Drone'un arm durumunu döndürür.
         """
         try:
-            async for arm in self.drone.telemetry.armed():
+            async for arm in self.mavsdk.telemetry.armed():
                 return arm
         except asyncio.TimeoutError:
             logging.error("Drone arm durumu alınırken zaman aşımına uğradı.")
@@ -154,7 +153,7 @@ class MAVSDKController:
         Drone'un durumunu döndürür.
         """
         try:
-            async for mode in self.drone.telemetry.flight_mode():
+            async for mode in self.mavsdk.telemetry.flight_mode():
                 return mode.value
         except asyncio.TimeoutError:
             logging.error("Drone durumu alınırken zaman aşımına uğradı.")
@@ -169,7 +168,7 @@ class MAVSDKController:
         Drone'un kalan bataryasını döndürür.
         """
         try:
-            async for battery in self.drone.telemetry.battery():
+            async for battery in self.mavsdk.telemetry.battery():
                 return battery.remaining_percent
         except asyncio.TimeoutError:
             logging.error("Batarya bilgisi alınırken zaman aşımına uğradı.")
@@ -184,7 +183,7 @@ class MAVSDKController:
         Drone'un GPS bilgilerini döndürür.
         """
         try:
-            async for gps_info in self.drone.telemetry.gps_info():
+            async for gps_info in self.mavsdk.telemetry.gps_info():
                 return {
                             "Bağlı Uydular":gps_info.num_satellites
                         }
@@ -201,7 +200,7 @@ class MAVSDKController:
         Drone'un GPS konumunu döndürür.
         """
         try:
-            async for position in self.drone.telemetry.position():
+            async for position in self.mavsdk.telemetry.position():
                 return {
                     "latitude": position.latitude_deg,
                     "longitude": position.longitude_deg,
@@ -220,7 +219,7 @@ class MAVSDKController:
         Drone'un yön bilgilerini döndürür (yaw, pitch, roll).
         """
         try:
-            async for attitude_euler in self.drone.telemetry.attitude_euler():
+            async for attitude_euler in self.mavsdk.telemetry.attitude_euler():
                 return {
                     "yaw": attitude_euler.yaw_deg,
                     "pitch": attitude_euler.pitch_deg,
@@ -239,7 +238,7 @@ class MAVSDKController:
         Drone'un anlık hız bilgisini döndürür.
         """
         try:
-            async for velocity in self.drone.telemetry.velocity_ned():
+            async for velocity in self.mavsdk.telemetry.velocity_ned():
                 return {
                     "north": velocity.north_m_s,
                     "east": velocity.east_m_s,
@@ -257,7 +256,7 @@ class MAVSDKController:
         Drone ile bağlantıyı keser.
         """
         if self.is_connected:
-            self.drone = System()
+            self.mavsdk = System()
             self.is_connected = False
             logging.info("Drone bağlantısı kesildi.")
         else:

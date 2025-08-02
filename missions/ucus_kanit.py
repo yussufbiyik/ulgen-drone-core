@@ -8,13 +8,16 @@ from controllers.drone_controller import DroneController
 from controllers.mavsdk_controller import MAVSDKController
 from controllers.xbee_controller import XBeeController
 
-class KTRVideoMission(Mission):
-    def __init__(self, drone: DroneController, **kwargs):
+from core.drone import Drone
+
+class UcusKanitMission(Mission):
+    def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
         super().__init__("KTR Video", drone, **kwargs)
+        self.drone_controller = drone_controller
 
     async def run(self):
         # Görev modül olarak çağırıldığında
-        # DroneController'ın tüm bağlantılarının ideal olduğu varsayılır.
+        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         logging.info("KTR Video görevi başlatılıyor...")
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
@@ -92,16 +95,17 @@ async def main():
             port=xbee_port(),
             message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
         )
-    drone_controller = DroneController(
-            xbee_controller,
-            mavsdk_controller,
-            isTesting=isTesting
-        )
-    await drone_controller.mavsdk_controller.connect()
-    while not drone_controller.mavsdk_controller.is_connected:
+    drone = Drone(
+        mavsdk_controller=mavsdk_controller,
+        xbee_controller=xbee_controller,
+        isTesting=isTesting
+    )
+    drone_controller = DroneController(drone)
+    await drone.mavsdk_controller.connect()
+    while not drone.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = KTRVideoMission(drone_controller, takeoff_altitude=10.0, target_locations=target_locations2)
+    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=10.0, target_locations=target_locations2)
     await mission.run()

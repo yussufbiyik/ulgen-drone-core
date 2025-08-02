@@ -7,68 +7,81 @@ Bu depo, bir dronun kontrol edilmesine yönelik temel yazılım bileşenlerini i
 Proje aşağıdaki klasör yapısına sahiptir:
 
 * **controllers**: Drone için farklı kontrolcü modüllerini içerir.
-
-  * `drone_controller.py`: Dronun ana kontrolcüsüdür.
-  * `mavsdk_controller.py`: MAVSDK aracılığıyla drone ile haberleşmeyi sağlar.
-  * `step_controller.py`: Adım tabanlı hareketleri yöneten kontrolcü.
   * `xbee_controller.py`: XBee modülü üzerinden iletişimi yönetir.
-* **core**: Drone yazılımının temel bileşenlerini barındırır.
+  * `mavsdk_controller.py`: MAVSDK aracılığıyla drone ile haberleşmeyi sağlar.
+  * `drone_controller.py`: Sık kullanılan dron işlemlerini step kontrol mekanizmasına uygun şekilde barındırır.
+  * `offboard_controller.py`: PID ve APF işlemlerini içerir ve Offboard modu ile alakalı işlemleri barındırır.
+  * `step_controller.py`: Adım tabanlı hareketleri yöneten kontrol mekanizması.
 
+* **core**: Temel bileşenleri barındırır.
+  * `drone.py`: Dronun tanımlandığı ana modüldür, diğer modüller bu modül aracılığıyla drona erişebilir.
   * `mission.py`: Görevler için temel sınıfları ve mantığı tanımlar.
+
 * **missions**: Belirli görev uygulamalarını içerir.
+  * `ucus_kanit.py`: Uçuş kanıt videosunun kodlarını barındırır.
 
-  * `son_video.py`: Örnek bir görev senaryosu.
 * **utils**: Sistemin farklı bölümleri tarafından kullanılan yardımcı modüller.
-
   * `apf.py`: Yapay Potansiyel Alan yöntemiyle engel kaçınma algoritması.
-  * `pid.py`: PID kontrol algoritması.
-  * `safety.py`: Güvenlik kontrolleri ve prosedürleri.
-  * `virtual_communication.py`: İletişim bağlantılarını sanal olarak simüle eder.
-* **logs**: Sistem tarafından oluşturulan log (günlük) dosyaları burada tutulur.
-* `tester.py`: `controllers` veya `missions` klasörlerindeki herhangi bir modülün `main()` fonksiyonunu çalıştırmak için kullanılan betik.
-* `requirements.txt`: Projede ihtiyaç duyulan Python bağımlılıklarını listeler.
+  * `pid.py`: PID ile hedef noktaya ilerleme algoritması.
+  * `socket_communication.py`: İletişim bağlantılarını socket ile sanal olarak simüle eder.
+  * `formation_utilities.py`: Formasyon vb. işlemler için gerekli ortak fonksiyonları (lat_lon -> Metre vb.) barındırır.
 
 ## Başlarken
 
-### Simülasyon Ortamı
+Simülasyonun çalışabilmesi için öncelikle PX4-Autopilot’un kurulu olması gerekir.
 
-Simülasyonun çalışabilmesi için öncelikle PX4-Autopilot’un kurulu olması gerekir. Kurulumdan sonra simülasyonu şu komutlarla başlatabilirsiniz:
+### PX4 Kurulumu
+1. PX4 Reposunu klonlayın
+```bash
+git clone https://github.com/PX4/PX4-Autopilot.git --recursive
+```
+2. Otomatik Kurulum Dosyasını Çalıştırın
+```bash
+bash ./PX4-Autopilot/Tools/setup/ubuntu.sh
+```
+
+### Tek Dron ile Simülasyon
+
+Simülasyonu şu komutlarla başlatabilirsiniz:
 
 ```bash
 cd PX4-Autopilot
 make px4_sitl gz_x500
 ```
 
+### Birden Fazla Dron ile Simülasyon
+Birden fazla dron ile simülasyon ortamı oluşturmak için `launch_drones.sh` scriptini aşağıdaki örnekteki gibi kullanın
+```bash
+# Örneğin:
+# ./launch_drones.sh <dron_sayısı>
+./launch_drones.sh 3
+```
+Ekranınızda Gazebo gözükecektir, bağlantı portlarını ve kodlarını görüntülemek için scripti çalıştırdığınız terminal penceresine bakın, her bir dron için örnek MAVSDK bağlantı kodunu göreceksiniz.
+
+Uçuş kanıt videosunun görev kodlarındaki gibi bir `sim_instance` oluşturup dron seçimini hızlandırmanızı öneririm.
+
+PX4 Log kayıtları `~/drone_logs` isimli klasörde bulunur
+
+**Desteklenen Gazebo Sürümleri:**
+- Classic
+- Harmonic
+
 ### Modül Çalıştırma
 
-Herhangi bir kontrolcü ya da görev modülünü çalıştırmak için projenin kök dizininden `tester.py` betiğini kullanabilirsiniz.
+Herhangi bir kontrolcü ya da görev modülünü çalıştırmak için projenin kök dizininden `tester.py` scriptini kullanabilirsiniz.
 
-Betik, çalıştırılacak modülün Python yolu şeklinde bir argüman alır.
+Script, çalıştırılacak modülün Python yolu şeklinde bir argüman alır.
 
 **Kullanım biçimi:**
 
 ```bash
-python tester.py path.to.module
+python tester.py modul.konumu
 ```
 
-**Örnekler:**
+**Örneğin:**
 
-`son_video` görevini çalıştırmak için:
-
-```bash
-python tester.py missions.son_video
-```
-
-`drone_controller` modülünü çalıştırmak için:
+`./missions/ucus_kanit.py` yolundaki görevi çalıştırmak için:
 
 ```bash
-python tester.py controllers.drone_controller
-```
-
-## Test Çalıştırma
-
-Testleri çalıştırmak için yine `tester.py` betiğini kullanabilirsiniz. Örneğin, `tests.test_mission` adlı bir test modülünüz varsa aşağıdaki komutla çalıştırabilirsiniz:
-
-```bash
-python tester.py tests.test_mission
+python tester.py missions.ucus_kanit
 ```

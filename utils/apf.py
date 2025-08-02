@@ -1,5 +1,5 @@
 import logging
-from utils.formation_utililties import distance_meters, latlon_to_ned, detect_pose
+from utils.formation_utilities import distance_meters, latlon_to_ned, detect_pose
 
 class APF:
     def __init__(self, repulsive_gain=0.000025, influence_radius=2.0, weight=0.1):
@@ -18,7 +18,7 @@ class APF:
         :return: (vx, vy) in m/s
         """
         if not neighbors:
-            logging.info("APF devre dışı, komşu yok.")
+            logging.debug("APF devre dışı, komşu yok.")
             return 0.0, 0.0
 
         force_x = 0.0
