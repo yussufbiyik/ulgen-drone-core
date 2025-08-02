@@ -5,16 +5,17 @@ import asyncio
 from controllers.drone_controller import DroneController
 from controllers.step_controller import StepController
 
+from core.drone import Drone
+
 class Mission:
     """
     Temel görev sınıfı. Tüm görevler bu sınıftan türetilir.
     İçerisinde görevin adımlarını ve görev mantığını barındırır.
     Dron üzerinde olabildiğince az işlem yapmaya ve sadece görev ile ilgili işlemleri gerçekleştirmeye odaklanır.
     """
-    def __init__(self, mission_name, drone_controller: DroneController, **kwargs):
+    def __init__(self, mission_name, drone: Drone, **kwargs):
         self.name = mission_name
-        self.drone_controller = drone_controller
-        self.drone = drone_controller.drone
+        self.drone = drone
         self.parameters = kwargs
         self.step_controller = StepController()
         self.status = {
@@ -26,7 +27,7 @@ class Mission:
 
     async def wait_for_drone_health(self):
         while True:
-            general_info = await self.drone.MAVSDKController.get_general_info()
+            general_info = await self.drone.mavsdk_controller.get_general_info()
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
                 self.drone.pre_takeoff_location = gps_position

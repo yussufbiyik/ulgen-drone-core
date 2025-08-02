@@ -1,38 +1,51 @@
 import logging
+from utils.formation_utilities import distance_meters, latlon_to_ned, detect_pose
 
 class APF:
-    def __init__(self, repulsive_gain=0.0005, influence_radius=0.0002):
+    def __init__(self, repulsive_gain=0.000025, influence_radius=2.0, weight=0.1):
         """
-        :param repulsive_gain: Strength of repulsive force
-        :param influence_radius: Max lat/lon distance to consider neighbors (degrees)
+        :param repulsive_gain: İtme kuvveti katsayısı
+        :param influence_radius: Komşuları dikkate almak için maksimum mesafe (metre)
         """
         self.repulsive_gain = repulsive_gain
-        self.influence_radius_sq = influence_radius ** 2
+        self.influence_radius = influence_radius
 
     def compute_apf(self, current_position, neighbors):
         """
-        Computes APF velocity in NED frame from lat/lon.
-        :param current_position: object with `.lat`, `.lon`
-        :param neighbors: list of objects with `.lat`, `.lon`
+        APF hesaplama fonksiyonu
+        :param current_position: Dronun anlık konumu
+        :param neighbors: Komşu dronların anlık konumlarının bir listesi
         :return: (vx, vy) in m/s
         """
         if not neighbors:
-            logging.debug("APF disabled — no neighbors.")
+            logging.debug("APF devre dışı, komşu yok.")
             return 0.0, 0.0
 
         force_x = 0.0
         force_y = 0.0
 
         for neighbor in neighbors:
-            dx = current_position.lat - neighbor.lat
-            dy = current_position.lon - neighbor.lon
-            dist_sq = dx ** 2 + dy ** 2
+            neighbor_position = neighbor["data"]["gps_position"]
+            dx, dy = latlon_to_ned(
+                neighbor_position["latitude"],
+                neighbor_position["longitude"],
+                current_position["latitude"],
+                current_position["longitude"],
+            )
+            distance = distance_meters(
+                current_position["latitude"],
+                current_position["longitude"],
+                neighbor_position["latitude"],
+                neighbor_position["longitude"],
+            )
 
-            if dist_sq < 1e-10 or dist_sq > self.influence_radius_sq:
-                continue  # çok yakın veya çok uzakta ise görmezden gel
+            if distance > self.influence_radius:
+                logging.debug(f"Komşu {distance} metre uzakta, itme kuvveti hesaplanmıyor.")
+                continue  # çok uzakta ise görmezden gel
+            logging.debug(f"Komşu {distance} metre mesafede, itme kuvveti hesaplanıyor.")
 
-            fx = self.repulsive_gain * dx / dist_sq
-            fy = self.repulsive_gain * dy / dist_sq
+            fx = self.repulsive_gain * dx / distance
+            fy = self.repulsive_gain * dy / distance
 
             force_x += fx
             force_y += fy

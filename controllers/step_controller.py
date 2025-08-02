@@ -2,10 +2,7 @@ import logging
 import asyncio
 import time
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s',
-)
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s')
 
 class Step:
     def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None):

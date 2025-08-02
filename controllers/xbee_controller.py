@@ -1,22 +1,15 @@
-import os
-import sys 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
-
 import json
 import threading
 import time
 import logging
 import serial
-import pprint
-from queue import Queue, Full
 import functools
+from queue import Queue, Full
 
 from digi.xbee.devices import XBeeDevice
 from digi.xbee.exception import XBeeException, TransmitException, TimeoutException, InvalidOperatingModeException
 
-pp = pprint.PrettyPrinter(indent=4)
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 def check_connected(func):
     @functools.wraps(func)
@@ -26,8 +19,6 @@ def check_connected(func):
             return None
         return func(self, *args, **kwargs)
     return wrapper
-
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class XBeeController:
     def __init__(self, message_received_callback, port="/dev/ttyUSB0", baudrate=57600, max_queue_size=20):
