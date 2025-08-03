@@ -1,3 +1,4 @@
+import math
 import logging
 import asyncio
 
@@ -94,9 +95,12 @@ class OffboardController:
             vy = self.clamp_velocity(pid_vy) + apf_vy
             vz = self.clamp_velocity(vz)
 
+            # Dronun gittiği yöne doğru önünü dönmesi için
+            yaw = math.degrees(math.atan2(vy, vx)) if vx != 0 or vy != 0 else 0.0
+
             try:
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=-vz, yaw_deg=0.0)
+                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=-vz, yaw_deg=yaw)
                 )
             except OffboardError as e:
                 logging.error(f"Hız vektörü ayarlanamadı: {e}")
