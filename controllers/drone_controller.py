@@ -5,11 +5,7 @@ import logging
 
 from core.drone import Drone
 
-from controllers.mavsdk_controller import MAVSDKController
-from controllers.xbee_controller import XBeeController
-
 from utils.formation_utilities import distance_meters
-from controllers.step_controller import StepController, Step
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
@@ -27,6 +23,7 @@ class DroneController:
             general_info = await self.drone.mavsdk_controller.get_general_info()
             gps_position = general_info["gps_position"]
             if gps_position and "altitude" in gps_position:
+                self.drone.pre_takeoff_location = gps_position
                 logging.info(f"Geçerli veriler alındı.")
                 break
             logging.info("Geçerli veriler henüz alınamadı, bekleniyor...")
@@ -130,7 +127,7 @@ class DroneController:
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
-        if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= 0.5):
+        if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= self.drone.waypoint_threshold):
             logging.info("Drone hedef konuma ulaştı.")
             return True
         return False

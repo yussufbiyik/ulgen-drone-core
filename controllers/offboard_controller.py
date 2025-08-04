@@ -42,23 +42,27 @@ class OffboardController:
             target_position["latitude"], target_position["longitude"],
             current_position["latitude"], current_position["longitude"]
         )
+        distance = math.sqrt(d_north**2 + d_east**2)
+        angle = math.atan2(d_east, d_north)
 
-        dt = 0.1  # Sabit güncelleme süresi
-        vx = self.drone.pid_n.compute(d_north, dt)
-        vy = self.drone.pid_e.compute(d_east, dt)
-        return vx, vy
+        dt = 0.05  # Sabit güncelleme süresi
+        speed = self.drone.pid_ne.compute(distance, dt)
+        vx = speed * math.cos(angle)
+        vy = speed * math.sin(angle)
+        return vx, vy, d_north, d_east, distance
 
     async def background_offboard_controller(self):
         while True:
             if not self.drone.offboard_status["is_active"]:
                 logging.debug("OffboardController kapalı, kontrol döngüsü atlanıyor.")
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
                 continue
 
             if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active():
                 try:
+                    yaw = await self.drone.mavsdk_controller.get_yaw()
                     await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                        VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                        VelocityNedYaw(0.0, 0.0, 0.0, yaw)
                     )
                     await self.drone.mavsdk_controller.mavsdk.offboard.start()
                     logging.debug("Offboard modu başlatıldı.")
@@ -68,41 +72,34 @@ class OffboardController:
                     continue
 
             target_pos = self.drone.offboard_status.get("target_position")
-            alt_to_keep = self.drone.offboard_status.get("altitude_to_keep")
 
             if target_pos is None:
                 logging.warning("Hedef konum ayarlanmamış. Hover moduna geçiliyor.")
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                    VelocityNedYaw(0.0, 0.0, 0.0, await self.drone.mavsdk_controller.get_yaw())
                 )
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
                 continue
 
-            # Güncel konum bilgisi
-            current_data = await self.drone.mavsdk_controller.get_general_info()
-            current_position = current_data["gps_position"]
-
             # PID ve APF ile hızları hesapla
-            pid_vx, pid_vy = await self.pid_controller(target_pos)
+            pid_vx, pid_vy, d_north, d_east, distance = await self.pid_controller(target_pos)
             apf_vx, apf_vy = await self.apf_controller()
-
-            # İrtifa kontrolü
-            error_z = alt_to_keep - current_position["altitude"]
-            vz = self.drone.pid_z.compute(error_z, 0.1)
 
             # Hızları birleştir ve sınırla
             vx = self.clamp_velocity(pid_vx) + apf_vx
             vy = self.clamp_velocity(pid_vy) + apf_vy
-            vz = self.clamp_velocity(vz)
 
             # Dronun gittiği yöne doğru önünü dönmesi için
-            yaw = math.degrees(math.atan2(vy, vx)) if vx != 0 or vy != 0 else 0.0
+            if distance > self.drone.waypoint_threshold:
+                yaw = math.degrees(math.atan2(vy, vx)) if vx != 0 or vy != 0 else 0.0
+            else:
+                yaw = await self.drone.mavsdk_controller.get_yaw()
 
             try:
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=-vz, yaw_deg=yaw)
+                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=0.0, yaw_deg=yaw)
                 )
             except OffboardError as e:
                 logging.error(f"Hız vektörü ayarlanamadı: {e}")
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)

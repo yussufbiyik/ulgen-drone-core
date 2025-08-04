@@ -61,20 +61,21 @@ class Drone:
             threading.Thread(target=self.listen_to_socket).start()
             logging.info("Soket iletişimi başlatıldı.")
         asyncio.create_task(self.broadcast_drone_status())
-        self.pre_takeoff_location = None  # Aslında home gibi
+        self.pre_takeoff_location = {
+            "latitude": 0.0,
+            "longitude": 0.0,
+            "altitude": 0.0
+        }  # Aslında home gibi
+        self.speed_limit = 1.0  # m/s olarak varsayılan hız sınırı
+        self.waypoint_threshold = 0.5  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
             "is_active": False,
             "altitude_to_keep": 0.0,
             "target_position": None,
         }
-        # Her eksen üzerinde kontrol sahibi olmak için
-        # PID kontrolörleri eksen başına ayrı ayrı tanımlanır.
-        # Yatay eksen
-        self.pid_n = PID(Kp=0.1, Ki=0.0, Kd=0.1)
-        self.pid_e = PID(Kp=0.1, Ki=0.0, Kd=0.1)
-        # Yükseklik ekseni
-        self.pid_z = PID(Kp=0.3, Ki=0.0, Kd=0.3)
+        # Yatay eksen için PID kontrolcüsü
+        self.pid_ne = PID(Kp=0.6, Ki=0.0, Kd=0.6, max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold)
         self.apf = APF()
         
         self.neighbors = []

@@ -250,6 +250,21 @@ class MAVSDKController:
         except Exception as e:
             logging.error(f"Anlık hız bilgisi alınırken hata: {e}")
             return None
+        
+    @check_connected
+    async def get_yaw(self):
+        """
+        Drone'un yaw değerini döndürür.
+        """
+        try:
+            async for euler_angle in self.mavsdk.telemetry.attitude_euler():
+                return euler_angle.yaw_deg
+        except asyncio.TimeoutError:
+            logging.error("Anlık yaw bilgisi alınırken zaman aşımına uğradı.")
+            return None
+        except Exception as e:
+            logging.error(f"Anlık yaw bilgisi alınırken hata: {e}")
+            return None
     
     def disconnect(self):
         """
