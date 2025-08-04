@@ -60,27 +60,10 @@ class UcusKanitMission(Mission):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    target_locations2 = [
-        {
-            "latitude": 47.397851,
-            "longitude": 8.546990,
-            "altitude": 10,
-        },
-        {
-            "latitude": 47.397372,
-            "longitude": 8.546582,
-            "altitude": 10,
-        },
-        {
-            "latitude": 47.397713,
-            "longitude": 8.546003,
-            "altitude": 10,
-        },
-    ]
     isTesting = True
     # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
     # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
-    sim_instance = 2
+    sim_instance = 0
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
@@ -101,6 +84,23 @@ async def main():
         isTesting=isTesting
     )
     drone_controller = DroneController(drone)
+    target_locations2 = [
+        {
+            "latitude": 47.397851,
+            "longitude": 8.546990,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
+        },
+        {
+            "latitude": 47.397372,
+            "longitude": 8.546582,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
+        },
+        {
+            "latitude": 47.397713,
+            "longitude": 8.546003,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
+        },
+    ]
     await drone.mavsdk_controller.connect()
     while not drone.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
