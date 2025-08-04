@@ -66,7 +66,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 1.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 0.5  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -75,7 +75,10 @@ class Drone:
             "target_position": None,
         }
         # Yatay eksen için PID kontrolcüsü
-        self.pid_ne = PID(Kp=0.6, Ki=0.0, Kd=0.6, max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold)
+        self.pid_ne = PID(
+            Kp=0.6, Ki=0.0, Kd=0.6, 
+            max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold
+        )
         self.apf = APF()
         
         self.neighbors = []

@@ -86,8 +86,8 @@ class OffboardController:
             apf_vx, apf_vy = await self.apf_controller()
 
             # Hızları birleştir ve sınırla
-            vx = self.clamp_velocity(pid_vx) + apf_vx
-            vy = self.clamp_velocity(pid_vy) + apf_vy
+            vx = self.clamp_velocity(pid_vx, self.drone.speed_limit) + apf_vx
+            vy = self.clamp_velocity(pid_vy, self.drone.speed_limit) + apf_vy
 
             # Dronun gittiği yöne doğru önünü dönmesi için
             if distance > self.drone.waypoint_threshold:

@@ -156,5 +156,5 @@ class DroneController:
         """
         Drone'un disarm durumunu kontrol eder.
         """
-        is_armed = await self.drone.mavsdk_controller.mavsdk.action.is_armed()
+        is_armed = await self.drone.mavsdk_controller.mavsdk.telemetry.armed()
         return not is_armed
