@@ -32,7 +32,7 @@ class PID:
         distance = abs(error)
         if distance < self.slowing_distance:
             scale = distance / self.slowing_distance
-            v_max = max(0.5, self.max_output * scale)
+            v_max = max(self.slowing_minimum, self.max_output * scale)
         # Hedef kabul edilebilecek eşikteyse 0 döndür ki çember çizme ve overshoot olmasın
         if distance < self.error_threshold:
             return 0.0
