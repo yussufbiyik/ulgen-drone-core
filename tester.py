@@ -11,15 +11,21 @@ def parse_args():
     )
     parser.add_argument(
         "module",
-        help="Module path in format: <package>.<module> (e.g., controllers.drone_controller)",
+        help="Modül konumu: <klasör>.<modül> (örn. controllers.drone_controller)",
+    )
+    parser.add_argument(
+        "sim_instance",
+        help="Simüle edilecek dron numarası (0'dan başlar)",
+        type=int,
+        default=0,
     )
     return parser.parse_args()
 
-async def run_main(main_func):
+async def run_main(main_func, *args):
     if inspect.iscoroutinefunction(main_func):
-        await main_func()
+        await main_func(*args)
     else:
-        main_func()
+        main_func(*args)
 
 def main():
     args = parse_args()
@@ -33,8 +39,8 @@ def main():
 
         main_func = getattr(mod, "main")
         print(f"Running main() from {module_path}...")
-
-        asyncio.run(run_main(main_func))
+        # Dron sayısını fonksiyon parametresi olarak geç
+        asyncio.run(run_main(main_func, args.sim_instance))
 
     except ModuleNotFoundError as e:
         print(f"Module not found: {e}")

@@ -59,12 +59,11 @@ class UcusKanitMission(Mission):
         logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
         await super().run()
 
-async def main():
+# Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
+# bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
+async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
     isTesting = True
-    # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
-    # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
-    sim_instance = 0
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),

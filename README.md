@@ -76,13 +76,14 @@ Script, çalıştırılacak modülün Python yolu şeklinde bir argüman alır.
 **Kullanım biçimi:**
 
 ```bash
-python tester.py modul.konumu
+python tester.py modul.konumu calistirilacak_dron(sim_instance)
 ```
 
 **Örneğin:**
 
-`./missions/ucus_kanit.py` yolundaki görevi çalıştırmak için:
+`./missions/ucus_kanit.py` yolundaki görevi 1. dron ile çalıştırmak için:
 
 ```bash
-python tester.py missions.ucus_kanit
+python tester.py missions.formasyon 0
 ```
+2 ve 3. dronlar için ise 0 sayısını 1,2... şeklinde yükseltebilirsiniz
