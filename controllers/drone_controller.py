@@ -5,7 +5,7 @@ import logging
 
 from core.drone import Drone
 
-from utils.formation_utilities import distance_meters
+from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
@@ -38,8 +38,8 @@ class DroneController:
         """
         Drone'un arm durumunu kontrol eder.
         """
-        async for is_armed in self.drone.mavsdk_controller.mavsdk.telemetry.armed():
-            return is_armed
+        is_armed = await self.drone.mavsdk_controller.mavsdk.telemetry.armed().__anext__()
+        return is_armed
     
     async def wait_for_broadcast(self):
         """
@@ -53,7 +53,7 @@ class DroneController:
         if len(self.drone.neighbors) > 0:
             logging.info(f"Şu anda {len(self.drone.neighbors)} tane komşu drone var.")
             logging.info("Daha başka dronların olma ihtimaline karşın biraz daha bekleniyor.")
-            if self.time_waited_for_other_drones < 100:
+            if self.time_waited_for_other_drones < 5:
                 self.time_waited_for_other_drones += 1
                 await asyncio.sleep(1)
                 return False
@@ -127,8 +127,10 @@ class DroneController:
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+        # Hedefe ulaşma durumunda True döndür
         if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= self.drone.waypoint_threshold):
             logging.info("Drone hedef konuma ulaştı.")
+            logging.info("Drone PID kontrolü sıfırlandı.")
             return True
         return False
     
@@ -145,8 +147,8 @@ class DroneController:
         Drone'un disarm edilmeden önceki durumunu kontrol eder.
         Şartın sağlanması için drone'un havada olmaması gerekir.
         """
-        async for is_in_air in self.drone.mavsdk_controller.mavsdk.telemetry.in_air():
-            return not is_in_air
+        is_in_air = await self.drone.mavsdk_controller.mavsdk.telemetry.in_air().__anext__()
+        return not is_in_air
     async def disarm(self):
         """
         Drone'u disarm eder
@@ -156,5 +158,40 @@ class DroneController:
         """
         Drone'un disarm durumunu kontrol eder.
         """
-        is_armed = await self.drone.mavsdk_controller.mavsdk.telemetry.armed()
+        is_armed = await self.drone.mavsdk_controller.mavsdk.telemetry.armed().__anext__()
         return not is_armed
+    
+    # Formasyon ile alakalı fonksiyonlar
+    async def get_drone_formation_position(self, formation_type, formation_distance, gps_position):
+        """
+        Drone'u formasyon konumuna taşır.
+        """
+        if len(self.drone.neighbors) < 1:
+            logging.warning("Formasyon için yeterli komşu drone yok.")
+            return
+        # Drone'un ideal pozisyonunu belirle
+
+        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
+        ideal_positions = calculate_ideal_formation_positions(formation_type, center_position, formation_distance)
+        
+        assigned_position = assign_position(ideal_positions, gps_position, self.drone.xbee_id, self.drone.neighbors)
+
+        return assigned_position
+    
+    async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
+        target_location = await self.get_drone_formation_position(formation_type, formation_distance, gps_position)
+        self.drone.formation_position = target_location
+        self.drone.offboard_status["target_position"] = target_location
+        self.drone.offboard_status["altitude_to_keep"] = gps_position["altitude"]
+    async def goto_formation_location_check(self):
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
+        logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
+        # Hedefe ulaşma durumunda True döndür
+        if (distance_meters(gps_position["latitude"], gps_position["longitude"], self.drone.formation_position["latitude"], self.drone.formation_position["longitude"]) <= self.drone.waypoint_threshold):
+            logging.info("Drone hedef konuma ulaştı.")
+            logging.info("Drone PID kontrolü sıfırlandı.")
+            return True
+        return False

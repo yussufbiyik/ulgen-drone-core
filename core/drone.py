@@ -66,18 +66,22 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 1.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 0.5  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
             "is_active": False,
             "altitude_to_keep": 0.0,
             "target_position": None,
+            "navigation_method": "pid", # "standard" veya "pid"
         }
+        # Formasyon için gerekli değişkenler
+        self.formation_position = None
         # Yatay eksen için PID kontrolcüsü
         self.pid_ne = PID(
-            Kp=0.6, Ki=0.0, Kd=0.6, 
-            max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold
+            Kp=0.5, Ki=0.005, Kd=0.35,
+            max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold,
+            slowing_minimum=0.5
         )
         self.apf = APF()
         
@@ -95,7 +99,7 @@ class Drone:
                 logging.debug(f"{msg['sender']} adresindeki drondan mesaj alındı, zaman: {msg['timestamp']}, içerik: {msg['data']}")
                 self.handle_message_received(msg)
             except Exception as e:
-                logging.error(f"Mesaj çözümlenemedi: {e}")
+                logging.exception(f"Mesaj çözümlenemedi: {e}")
 
     def handle_message_received(self, recieved_message):
         """
@@ -163,8 +167,12 @@ class Drone:
             message = format_broadcast_message(data)
             try:
                 if self.isTesting:
+                    test_message = json.dumps({
+                        "sender": self.fake_id,
+                        "data": message,
+                    })
                     self.socket.sendto(
-                        message.encode('utf-8'),
+                        test_message.encode('utf-8'),
                         (SERVER_IP, SERVER_PORT)
                     )
                 else:

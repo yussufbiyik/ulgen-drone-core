@@ -1,3 +1,5 @@
+import math
+
 def low_pass_filter(value, prev_value, alpha):
     """
     Herhangi bir değere low-pass filtre uygular.

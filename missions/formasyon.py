@@ -11,15 +11,26 @@ from controllers.xbee_controller import XBeeController
 
 from core.drone import Drone
 
-class UcusKanitMission(Mission):
+def pick_formation():
+    """
+    Kullanıcıdan formasyon tipini seçmesini ister.
+    """
+    formation_type = input("Formasyon tipi (v/cizgi/ok): ").strip().lower()
+    if formation_type not in ["v", "cizgi", "ok"]:
+        raise ValueError("Geçersiz formasyon tipi. Lütfen 'v', 'cizgi' veya 'ok' girin.")
+    return formation_type
+
+class FormasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("KTR Video", drone, **kwargs)
+        super().__init__("Formasyon", drone, **kwargs)
         self.drone_controller = drone_controller
 
     async def run(self):
         # Görev modül olarak çağırıldığında
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("KTR Video görevi başlatılıyor...")
+        logging.info("Formasyon görevi başlatılıyor...")
+        # Diğer dronlardan broadcast bekle
+        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, self.drone_controller.wait_for_broadcast_check))
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
@@ -34,21 +45,32 @@ class UcusKanitMission(Mission):
             )
         # OffboardController'ı aktifleştir
         self.step_controller.add_step(
-            Step("Offboard Moda Geç", 
-                self.drone_controller.enable_offboard_controller, 
+            Step("Offboard Moda Geç",
+                self.drone_controller.enable_offboard_controller,
                 self.drone_controller.enable_offboard_controller_check)
             )
-        # Hedef noktalara ilerle
-        for i, target_location in enumerate(self.parameters.get("target_locations", [])):
-            step_name = f"{i+1} Numaralı Hedefe İlerle"
-            self.step_controller.add_step(
-                Step(
-                    step_name, 
-                    lambda loc=target_location: self.drone_controller.goto_location_with_offboard(loc), 
-                    lambda loc=target_location: self.drone_controller.goto_location_check(loc)
-                )
+        # Formasyon pozisyonunu hesapla
+        formation_type = self.parameters.get("formation_type", "v")
+        formation_distance = self.parameters.get("formation_distance", 5.0)
+        # Formasyona gir
+        self.step_controller.add_step(
+            Step(
+                "Formasyona Gir",
+                lambda: self.drone_controller.goto_formation_location_with_offboard(formation_type, formation_distance),
+                lambda: self.drone_controller.goto_formation_location_check()
             )
-            logging.info(f"{step_name} adımı eklendi.")
+        )
+        # Bir süre formasyonda kal
+        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
+        self.step_controller.add_step(
+            Step(
+                "Formasyonda Kal",
+                lambda: asyncio.sleep(formasyon_suresi),
+                lambda: True  # Formasyonda kalma kontrolü, her zaman True döner
+            )
+        )
+        # Diğer formasyonlara geçiş için kullanıcı girdisi al
+        #! Daha ayarlanmadı!!
         # Hedef konumlara ulaşıldıktan sonra zemine in
         # Kontrol fonksiyonu olarak altitude_check fonksiyonu kullanılabilir
         self.step_controller.add_step(Step("Land", self.drone_controller.land,
@@ -64,7 +86,7 @@ async def main():
     isTesting = True
     # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
     # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
-    sim_instance = 0
+    sim_instance = 2
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
@@ -85,30 +107,13 @@ async def main():
         isTesting=isTesting
     )
     drone_controller = DroneController(drone)
-    target_locations2 = [
-        {
-            "latitude": 47.397970,
-            "longitude": 8.546641,
-            "altitude": drone.pre_takeoff_location["altitude"]+10,
-        },
-        {
-            "latitude": 47.397742,
-            "longitude": 8.546451,
-            "altitude": drone.pre_takeoff_location["altitude"]+10,
-        },
-        {
-            "latitude": 47.397890,
-            "longitude": 8.546217,
-            "altitude": drone.pre_takeoff_location["altitude"]+10,
-        },
-    ]
     await drone.mavsdk_controller.connect()
     while not drone.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=5.0, target_locations=target_locations2)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=5.0, formation_type="v", formation_distance=5.0, formation_duration=60)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

@@ -68,8 +68,9 @@ class StepController:
                 step.is_completed = True
                 logging.info(f"Adım {step.name} başarıyla tamamlandı.")
             except Exception as e:
-                logging.error(f"Adım {step.name} sırasında hata oluştu: {e}")
+                logging.exception(f"Adım {step.name} sırasında hata oluştu: {e}")
                 step.is_completed = False
         logging.info("Tüm adımlar başarıyla tamamlandı.")
         self.is_all_done = True
+        return self.is_all_done
 
