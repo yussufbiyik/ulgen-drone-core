@@ -1,5 +1,4 @@
 import sys
-import time
 import logging
 import asyncio
 
@@ -12,24 +11,6 @@ from controllers.xbee_controller import XBeeController
 
 from core.drone import Drone
 
-time_waited = 0
-async def sleep_for(milliseconds):
-    """
-    Asenkron olarak belirtilen milisaniye kadar bekler.
-    """
-    global time_waited
-    time_waited = time.time()
-async def sleep_for_check(milliseconds):
-    """
-    Asenkron olarak belirtilen milisaniye kadar beklenip beklenilmediğini kontrol eder.
-    """
-    global time_waited
-    current_time = time.time()
-    if current_time - time_waited >= milliseconds / 1000:
-        return True
-    else:
-        return False
-    
 class UcusKanitMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
         super().__init__("KTR Video", drone, **kwargs)
@@ -37,8 +18,6 @@ class UcusKanitMission(Mission):
 
     async def run(self):
         # Görev modül olarak çağırıldığında
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
-        hold_time = self.parameters.get("hold_time", 100.0)
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         logging.info("KTR Video görevi başlatılıyor...")
         # Arm et
@@ -46,17 +25,12 @@ class UcusKanitMission(Mission):
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Takeoff yap
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
-            )
-        # OffboardController'ı aktifleştir
-        self.step_controller.add_step(
-            Step("Offboard Moda Geç", 
-                self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
             )
         # Hedef noktalara ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
@@ -64,15 +38,8 @@ class UcusKanitMission(Mission):
             self.step_controller.add_step(
                 Step(
                     step_name, 
-                    lambda loc=target_location: self.drone_controller.goto_location_with_offboard(loc), 
+                    lambda loc=target_location: self.drone_controller.goto_location(loc),
                     lambda loc=target_location: self.drone_controller.goto_location_check(loc)
-                )
-            )
-            self.step_controller.add_step(
-                Step(
-                    "Konumda Kal",
-                    lambda: sleep_for(hold_time),
-                    lambda: sleep_for_check(hold_time)
                 )
             )
             logging.info(f"{step_name} adımı eklendi.")
@@ -111,37 +78,20 @@ async def main(sim_instance=0):
         isTesting=isTesting
     )
     drone_controller = DroneController(drone)
-    target_locations1 = [
-        {
-            "latitude": 40.326037, 
-            "longitude": 36.473655,
-            "altitude": drone.pre_takeoff_location["altitude"]+5,
-        },
-        {
-            "latitude": 40.325634,
-            "longitude": 36.473806,
-            "altitude": drone.pre_takeoff_location["altitude"]+5,
-        },
-        {
-            "latitude": 40.325428,
-            "longitude": 36.473451,
-            "altitude": drone.pre_takeoff_location["altitude"]+5,
-        },
-    ]
     target_locations2 = [
         {
-            "latitude": 47.397970,
-            "longitude": 8.546641,
+            "latitude": 40.325763, 
+            "longitude": 36.473505,
             "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
         {
-            "latitude": 47.397742,
-            "longitude": 8.546451,
+            "latitude": 40.325672,
+            "longitude": 36.473580,
             "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
         {
-            "latitude": 47.397890,
-            "longitude": 8.546217,
+            "latitude": 40.325460,
+            "longitude": 36.473591,
             "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
     ]
@@ -151,7 +101,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=5.0, target_locations=target_locations2, hold_time=10000)
+    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=5.0, target_locations=target_locations2)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

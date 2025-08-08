@@ -97,21 +97,58 @@ def calculate_ideal_formation_positions(formation_type, center_position, d):
     
     return ideal_positions
 
+# def assign_position(formation_positions, current_position, drone_id, neighbors=[]):
+#     """
+#     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
+#     """
+#     available_positions = copy.deepcopy(formation_positions)
+#     assignments = {}
+#     all_drones = sorted([
+#         {"sender": drone_id, "data": {"gps_position": current_position}},
+#         *neighbors
+#     ], key=lambda drone: int(drone["sender"]))
+    
+#     for drone in all_drones:
+#         closest_position_of_drone = min(available_positions, key=lambda pos: distance_meters(pos, drone["data"]["gps_position"]))
+#         assignments[drone["sender"]] = closest_position_of_drone
+#         available_positions.remove(closest_position_of_drone)
+#     closest_position = assignments[drone_id]
+#     return closest_position, assignments
+
 def assign_position(formation_positions, current_position, drone_id, neighbors=[]):
     """
     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
     """
     available_positions = copy.deepcopy(formation_positions)
     assignments = {}
-    all_drones = sorted([
-        {"sender": drone_id, "data": {"gps_position": current_position}},
-        *neighbors
-    ], key=lambda drone: int(drone["sender"]))
-    
-    for drone in all_drones:
-        closest_position_of_drone = min(available_positions, key=lambda pos: distance_meters(pos, drone["data"]["gps_position"]))
-        assignments[drone["sender"]] = closest_position_of_drone
-        available_positions.remove(closest_position_of_drone)
-    
-    closest_position = assignments[drone_id]
-    return closest_position, assignments
+    assigned_position = min(available_positions, key=lambda pos: distance_meters(pos, current_position))
+    assignments[drone_id] = {
+        "assigned_position": assigned_position,
+        "distance_to_assigned_position": distance_meters(assigned_position, current_position)
+    }
+    neighbors_position_assignments = { 
+        f"{neighbor['sender']}": {
+            "assigned_position": min(available_positions, key=lambda pos: distance_meters(pos, neighbor["data"]["gps_position"])),
+            "distance_to_assigned_position": distance_meters(
+                    min(available_positions, key=lambda pos: distance_meters(pos, neighbor["data"]["gps_position"])), 
+                    neighbor["data"]["gps_position"]
+                )
+        }
+        for neighbor in neighbors
+    }
+    assignments.update(neighbors_position_assignments)
+    current_drone_assignment = assignments[drone_id]
+    for position_assignment in assignments:
+        if position_assignment == drone_id:
+            continue
+        if assignments[position_assignment]["assigned_position"] in available_positions:
+            available_positions.remove(assignments[position_assignment]["assigned_position"])
+        if assignments[position_assignment]["assigned_position"] == assigned_position:
+            logging.warning(f"Dron {drone_id} ile {position_assignment} aynı pozisyona atanmış: {assigned_position}, daha yakın olan dron pozisyona sahip olacak")
+            if current_drone_assignment["distance_to_assigned_position"] < assignments[position_assignment]["distance_to_assigned_position"]:
+                logging.warning(f"Dron {drone_id} daha yakın, atama iptal ediliyor")
+                current_drone_assignment["assigned_position"] = assigned_position
+            else:
+                logging.warning(f"Dron {position_assignment} daha yakın, yeni konum ataması yapılıyor.")
+                current_drone_assignment["assigned_position"] = min(available_positions, key=lambda pos: distance_meters(pos, current_position))
+    return current_drone_assignment["assigned_position"], assignments

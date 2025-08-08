@@ -128,6 +128,19 @@ class DroneController:
             return True
         return False
     
+    async def goto_location(self, target_location):
+        """
+        Drone'u belirli bir konuma götüren adım fonksiyonu.
+        
+        :param target_location: Hedef konum (latitude, longitude, altitude)
+        """
+        logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            target_location["latitude"],
+            target_location["longitude"],
+            target_location["altitude"]+self.drone.pre_takeoff_location["altitude"],  # GPS yüksekliğine göre ayarlanır
+            0,  # yaw
+        )
     async def goto_location_with_offboard(self, target_location):
         logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
         self.drone.offboard_status["target_position"] = target_location
