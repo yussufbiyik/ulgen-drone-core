@@ -123,7 +123,7 @@ class MAVSDKController:
                    health.is_accelerometer_calibration_ok and \
                    health.is_gyrometer_calibration_ok and \
                    health.is_global_position_ok:
-                    logging.info("Drone kalibrasyon bilgileri başarılı.")
+                    logging.debug("Drone kalibrasyon bilgileri başarılı.")
                     return True
                 else:
                     logging.warning("Drone kalibrasyon bilgileri başarısız, lütfen kontrol edin.")

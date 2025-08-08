@@ -77,9 +77,11 @@ class Drone:
         }
         # Formasyon için gerekli değişkenler
         self.formation_position = None
+        self.formation_weight_center = None
+        self.neighbor_formation_positions = []
         # Yatay eksen için PID kontrolcüsü
         self.pid_ne = PID(
-            Kp=0.5, Ki=0.005, Kd=0.35,
+            Kp=0.6, Ki=0.005, Kd=0.4,
             max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold,
             slowing_minimum=0.5
         )
@@ -137,7 +139,7 @@ class Drone:
             self.neighbors.append(message_data)
             logging.info(f"Yeni komşu eklendi: {recieved_message['sender']} ({recieved_message['timestamp'] - time.time()}ms).")
         else:
-            logging.info(f"Komşu zaten mevcut:, güncelleniyor ({recieved_message['timestamp'] - time.time()}ms).")
+            logging.debug(f"Komşu zaten mevcut:, güncelleniyor ({recieved_message['timestamp'] - time.time()}ms).")
             for neighbor in self.neighbors:
                 if neighbor["sender"] == recieved_message["sender"]:
                     neighbor["data"]["armable"] = bool(int(message_raw[0]))
@@ -184,5 +186,5 @@ class Drone:
             except Exception as e:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
-            logging.info(f"Güncel durum broadcast edildi: {message}")
+            logging.debug(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5)  # Her saniyede bir güncel durumu broadcast et

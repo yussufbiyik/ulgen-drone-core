@@ -108,10 +108,7 @@ class OffboardController:
                 continue
             current_data = await self.drone.mavsdk_controller.get_general_info()
             current_position = current_data["gps_position"]
-            d_north, d_east, distance, angle = get_distances_and_angles(
-                current_position["latitude"], current_position["longitude"],
-                target_pos["latitude"], target_pos["longitude"]
-            )
+            d_north, d_east, distance, angle = get_distances_and_angles(current_position, target_pos)
 
             # Hedef konum değişmişse
             if self.prev_position != target_pos:
@@ -144,8 +141,8 @@ class OffboardController:
             apf_vx, apf_vy = await self.apf_controller()
 
             # Hızları birleştir ve sınırla
-            vx = self.clamp_velocity(vx, self.drone.speed_limit) + apf_vx
-            vy = self.clamp_velocity(vy, self.drone.speed_limit) + apf_vy
+            vx = self.clamp_velocity(vx, self.drone.speed_limit) - apf_vx
+            vy = self.clamp_velocity(vy, self.drone.speed_limit) - apf_vy
 
             # Dronun gittiği yöne doğru önünü dönmesi için
             if distance > self.drone.waypoint_threshold:

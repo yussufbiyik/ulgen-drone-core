@@ -1,3 +1,4 @@
+import copy
 import math
 import logging
 
@@ -7,13 +8,15 @@ def calculate_formation_positions(formation_type, d):
     elif formation_type == "cizgi":
         return [(-d, 0), (0, 0), (d, 0)]
     elif formation_type == "ok":
-        return [(0, d), (d, 0), (d, 0)]
+        return [(0, -d), (d, 0), (-d, 0)]
 
-def distance_meters(lat1, lon1, lat2, lon2):
+def distance_meters(pos1, pos2):
     """
     Haversine formülü ile mesafe hesaplama
     """
     R = 6371000
+    lat1, lon1 = pos1['latitude'], pos1['longitude']
+    lat2, lon2 = pos2['latitude'], pos2['longitude']
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = (math.sin(dlat / 2) ** 2 +
@@ -22,23 +25,29 @@ def distance_meters(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def latlon_to_ned(target_lat, target_lon, current_lat, current_lon):
+def latlon_to_ned(target_pos, current_pos):
     """
     GPS koordinatlarını NED düzlemine çevir
     """
-    d_north = distance_meters(current_lat, current_lon, target_lat, current_lon)
-    d_east = distance_meters(current_lat, current_lon, current_lat, target_lon)
-    if target_lat < current_lat:
+    d_north = distance_meters(current_pos, {
+        'latitude': target_pos['latitude'],
+        'longitude': current_pos['longitude']
+    })
+    d_east = distance_meters(current_pos, {
+        'latitude': current_pos['latitude'],
+        'longitude': target_pos['longitude']
+    })
+    if target_pos['latitude'] < current_pos['latitude']:
         d_north *= -1
-    if target_lon < current_lon:
+    if target_pos['longitude'] < current_pos['longitude']:
         d_east *= -1
     return d_north, d_east
 
-def get_distances_and_angles(current_lat, current_lon, target_lat, target_lon):
+def get_distances_and_angles(current_pos, target_pos):
     """
     Mevcut ve hedef konumlar arasındaki mesafe ve açıları hesaplar.
     """
-    d_north, d_east = latlon_to_ned(target_lat, target_lon, current_lat, current_lon)
+    d_north, d_east = latlon_to_ned(target_pos, current_pos)
     distance = math.sqrt(d_north**2 + d_east**2)
     angle = math.atan2(d_east, d_north)
     return d_north, d_east, distance, angle
@@ -92,30 +101,17 @@ def assign_position(formation_positions, current_position, drone_id, neighbors=[
     """
     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
     """
-    distance = lambda pos1, pos2: distance_meters(
-        pos1['latitude'], pos1['longitude'], pos2['latitude'], pos2['longitude']
-    )
-    closest_position = min(formation_positions, key=lambda pos: distance(pos, current_position))
-    print(f"Drone {drone_id} için en yakın formasyon konumu: {closest_position}")
-    # Başka bir dronla aynı konumu seçme ihtimalini kontrol et
-    closest_positions_of_neighbors = []
-    for neighbor in neighbors:
-        # Her komşu için en yakın formasyon konumunu bul
-        neighbor_position = {
-            'latitude': neighbor['data']['gps_position']['latitude'],
-            'longitude': neighbor['data']['gps_position']['longitude']
-        }
-        closest_position_of_neighbor = min(formation_positions, key=lambda pos: distance(pos, neighbor_position))
-        closest_positions_of_neighbors.append({
-            "closest_position": closest_position_of_neighbor,
-            "neighbor": neighbor
-        })
-    # Konumların çakıştığı dronu bul, ID değeri büyükse boşta olan konumu seç
-    for neighbor in closest_positions_of_neighbors:
-        if distance(closest_position, neighbor["closest_position"]) < 0.0001 and int(neighbor["neighbor"]["sender"]) > int(drone_id):
-            print(f"Drone {drone_id} ile {neighbor['neighbor']['sender']} arasında konum çakışması var.")
-            formation_positions.remove(neighbor["closest_position"])
-            closest_position = min(formation_positions, key=lambda pos: distance(pos, current_position))
-    print(f"Drone {drone_id} için atanan formasyon konumu: {closest_position}")
-    return closest_position
-        
+    available_positions = copy.deepcopy(formation_positions)
+    assignments = {}
+    all_drones = sorted([
+        {"sender": drone_id, "data": {"gps_position": current_position}},
+        *neighbors
+    ], key=lambda drone: int(drone["sender"]))
+    
+    for drone in all_drones:
+        closest_position_of_drone = min(available_positions, key=lambda pos: distance_meters(pos, drone["data"]["gps_position"]))
+        assignments[drone["sender"]] = closest_position_of_drone
+        available_positions.remove(closest_position_of_drone)
+    
+    closest_position = assignments[drone_id]
+    return closest_position, assignments

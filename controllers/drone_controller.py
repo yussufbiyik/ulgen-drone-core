@@ -1,6 +1,7 @@
 import sys 
 import asyncio
 import numpy as np
+import functools
 import logging
 
 from core.drone import Drone
@@ -8,6 +9,14 @@ from core.drone import Drone
 from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
+
+def check_neighbors(func):
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        if not self.drone.neighbors or len(self.drone.neighbors) < 2:
+            raise Exception("Başka dron yok, formasyon özelliği çalıştırılamaz.")
+        return await func(self, *args, **kwargs)
+    return wrapper
 
 class DroneController:
     def __init__(self, drone: Drone):
@@ -46,19 +55,19 @@ class DroneController:
         Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
         """
         logging.info("Diğer dronların broadcast mesajları bekleniyor...")
-    async def wait_for_broadcast_check(self):
+    async def wait_for_broadcast_check(self, minimum_neighbor_count=1):
         """
         Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
         """
         if len(self.drone.neighbors) > 0:
             logging.info(f"Şu anda {len(self.drone.neighbors)} tane komşu drone var.")
             logging.info("Daha başka dronların olma ihtimaline karşın biraz daha bekleniyor.")
-            if self.time_waited_for_other_drones < 5:
+            if self.time_waited_for_other_drones < 2:
                 self.time_waited_for_other_drones += 1
                 await asyncio.sleep(1)
                 return False
             logging.info("Tüm dronların broadcast mesajları alındığı varsayılıyor, kontrol tamamlandı.")
-            return True
+            return True if len(self.drone.neighbors) >= minimum_neighbor_count else False
         return False
     
     async def set_pre_takeoff_location(self):
@@ -128,9 +137,8 @@ class DroneController:
         gps_position = general_info["gps_position"]
         logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
         # Hedefe ulaşma durumunda True döndür
-        if (distance_meters(gps_position["latitude"], gps_position["longitude"], target_location["latitude"], target_location["longitude"]) <= self.drone.waypoint_threshold):
+        if (distance_meters(gps_position, target_location) <= self.drone.waypoint_threshold):
             logging.info("Drone hedef konuma ulaştı.")
-            logging.info("Drone PID kontrolü sıfırlandı.")
             return True
         return False
     
@@ -162,20 +170,45 @@ class DroneController:
         return not is_armed
     
     # Formasyon ile alakalı fonksiyonlar
+    async def neighbor_altitude_check(self, target_altitude):
+        """
+        Diğer dronların irtifalarını kontrol eder.
+        """
+        if len(self.drone.neighbors) < 2:
+            logging.warning("Formasyon için yeterli komşu drone yok.")
+            return False
+        for neighbor in self.drone.neighbors:
+            if "altitude" in neighbor["data"]["gps_position"] and (neighbor["data"]["gps_position"]["altitude"] - target_altitude) > 0.5:
+                return False
+        logging.info("Tüm komşu dronlar yeterli irtifaya sahip.")
+        return True
+    async def neighbor_formation_check(self):
+        """
+        Diğer dronların formasyon durumunu kontrol eder.
+        """
+        if len(self.drone.neighbors) < 2:
+            logging.warning("Formasyon için yeterli komşu drone yok.")
+            return True
+        for neighbor in self.drone.neighbors:
+            if distance_meters(neighbor["data"]["gps_position"], self.drone.neighbor_formation_positions[neighbor["sender"]]) > self.drone.waypoint_threshold:
+                logging.warning(f"{neighbor['sender']} drone formasyon konumunda değil.")
+                return False
+        logging.info("Tüm komşu dronlar formasyon konumunda.")
+        return True
     async def get_drone_formation_position(self, formation_type, formation_distance, gps_position):
         """
         Drone'u formasyon konumuna taşır.
         """
-        if len(self.drone.neighbors) < 1:
+        if len(self.drone.neighbors) < 2:
             logging.warning("Formasyon için yeterli komşu drone yok.")
             return
         # Drone'un ideal pozisyonunu belirle
-
         center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
         ideal_positions = calculate_ideal_formation_positions(formation_type, center_position, formation_distance)
-        
-        assigned_position = assign_position(ideal_positions, gps_position, self.drone.xbee_id, self.drone.neighbors)
 
+        assigned_position, position_assignments = assign_position(ideal_positions, gps_position, self.drone.xbee_id, self.drone.neighbors)
+        position_assignments.pop(self.drone.xbee_id)  # Kendi pozisyonunu kaldır
+        self.drone.neighbor_formation_positions = position_assignments
         return assigned_position
     
     async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
@@ -190,8 +223,7 @@ class DroneController:
         gps_position = general_info["gps_position"]
         logging.debug(f"Drone konumu: {gps_position['latitude']}, {gps_position['longitude']}, {gps_position['altitude']}")
         # Hedefe ulaşma durumunda True döndür
-        if (distance_meters(gps_position["latitude"], gps_position["longitude"], self.drone.formation_position["latitude"], self.drone.formation_position["longitude"]) <= self.drone.waypoint_threshold):
+        if (distance_meters(gps_position, self.drone.formation_position) <= self.drone.waypoint_threshold) and await self.neighbor_formation_check():
             logging.info("Drone hedef konuma ulaştı.")
-            logging.info("Drone PID kontrolü sıfırlandı.")
             return True
         return False

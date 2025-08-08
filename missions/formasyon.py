@@ -1,6 +1,7 @@
 import sys
 import logging
 import asyncio
+import time
 
 from core.mission import Mission
 
@@ -11,14 +12,30 @@ from controllers.xbee_controller import XBeeController
 
 from core.drone import Drone
 
-def pick_formation():
+time_waited = 0
+async def sleep_for(milliseconds):
     """
-    Kullanıcıdan formasyon tipini seçmesini ister.
+    Asenkron olarak belirtilen milisaniye kadar bekler.
     """
-    formation_type = input("Formasyon tipi (v/cizgi/ok): ").strip().lower()
-    if formation_type not in ["v", "cizgi", "ok"]:
-        raise ValueError("Geçersiz formasyon tipi. Lütfen 'v', 'cizgi' veya 'ok' girin.")
-    return formation_type
+    global time_waited
+    time_waited = time.time()
+async def sleep_for_check(milliseconds):
+    """
+    Asenkron olarak belirtilen milisaniye kadar beklenip beklenilmediğini kontrol eder.
+    """
+    global time_waited
+    current_time = time.time()
+    if current_time - time_waited >= milliseconds / 1000:
+        return True
+    else:
+        return False
+
+async def print_message(message):
+    """
+    Mesajı yazdırır.
+    ( neden lazım diye sormayın {-_-} )
+    """
+    logging.info(message)
 
 class FormasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
@@ -28,54 +45,60 @@ class FormasyonMission(Mission):
     async def run(self):
         # Görev modül olarak çağırıldığında
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
+        # Parametreleri Al
+        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
+        formation_distance = self.parameters.get("formation_distance", 5.0)
+        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
+
         logging.info("Formasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
-        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, self.drone_controller.wait_for_broadcast_check))
+        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Takeoff yap
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
             )
+        # Dİğer dronların irtifalarını almalarını bekle
+        self.step_controller.add_step(Step(
+                "Diğer Dronların İrtifalarını Bekle", 
+                lambda: print_message("Diğer dronların irtifalarını alması bekleniyor..."),
+                lambda: self.drone_controller.neighbor_altitude_check(takeoff_altitude)
+            )
+        )
         # OffboardController'ı aktifleştir
         self.step_controller.add_step(
             Step("Offboard Moda Geç",
                 self.drone_controller.enable_offboard_controller,
                 self.drone_controller.enable_offboard_controller_check)
             )
-        # Formasyon pozisyonunu hesapla
-        formation_type = self.parameters.get("formation_type", "v")
-        formation_distance = self.parameters.get("formation_distance", 5.0)
-        # Formasyona gir
-        self.step_controller.add_step(
-            Step(
+        # Formasyon bölümü
+        formation_step = lambda formation_name, distance: Step(
                 "Formasyona Gir",
-                lambda: self.drone_controller.goto_formation_location_with_offboard(formation_type, formation_distance),
+                lambda: self.drone_controller.goto_formation_location_with_offboard(formation_name, distance),
                 lambda: self.drone_controller.goto_formation_location_check()
             )
-        )
-        # Bir süre formasyonda kal
-        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
-        self.step_controller.add_step(
-            Step(
+        formation_hold_step = lambda hold_time: Step(
                 "Formasyonda Kal",
-                lambda: asyncio.sleep(formasyon_suresi),
-                lambda: True  # Formasyonda kalma kontrolü, her zaman True döner
+                lambda: sleep_for(hold_time),
+                lambda: sleep_for_check(hold_time)
             )
-        )
-        # Diğer formasyonlara geçiş için kullanıcı girdisi al
-        #! Daha ayarlanmadı!!
-        # Hedef konumlara ulaşıldıktan sonra zemine in
-        # Kontrol fonksiyonu olarak altitude_check fonksiyonu kullanılabilir
-        self.step_controller.add_step(Step("Land", self.drone_controller.land,
-                    lambda alt=0: self.drone_controller.altitude_check(alt)
-                ))
+        # Formasyona gir
+        self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
+        # Bir süre formasyonda kal
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        # Formasyonlar arası geçiş yap
+        self.step_controller.add_step(formation_step("ok", 5))
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        self.step_controller.add_step(formation_step("cizgi", 5))
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
         self.step_controller.add_step(Step("Disarm Et", self.drone_controller.disarm, self.drone_controller.disarm_check, self.drone_controller.disarm_pre_check))
         logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
@@ -98,7 +121,7 @@ async def main(sim_instance=0):
     if not isTesting:
         xbee_controller = XBeeController(
             port=xbee_port(),
-            message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
+            message_received_callback=None
         )
     drone = Drone(
         mavsdk_controller=mavsdk_controller,
@@ -112,7 +135,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=5.0, formation_type="v", formation_distance=5.0, formation_duration=60)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=5.0, formation_duration=100)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)
