@@ -79,6 +79,8 @@ class Drone:
         # Formasyon için gerekli değişkenler
         self.formation_position = None
         self.formation_weight_center = None
+        self.formation_type = None
+        self.formation_distance = None
         self.neighbor_formation_positions = []
         self.mission_info = {
             "current_step": {
