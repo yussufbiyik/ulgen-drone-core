@@ -231,6 +231,21 @@ class MAVSDKController:
         except Exception as e:
             logging.error(f"Yön bilgisi alınırken hata: {e}")
             return None
+        
+    @check_connected
+    async def get_altitude(self):
+        """
+        Drone'un irtifa bilgisini döndürür.
+        """
+        try:
+            async for altitude_information in self.mavsdk.telemetry.altitude():
+                return altitude_information
+        except asyncio.TimeoutError:
+            logging.error("Yön bilgisi alınırken zaman aşımına uğradı.")
+            return None
+        except Exception as e:
+            logging.error(f"Yön bilgisi alınırken hata: {e}")
+            return None
     
     @check_connected
     async def get_velocity(self):

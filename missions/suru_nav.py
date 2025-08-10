@@ -1,3 +1,4 @@
+import math
 import sys
 import logging
 import asyncio
@@ -48,7 +49,7 @@ class FormasyonMission(Mission):
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         # Parametreleri Al
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
-        formation_distance = self.parameters.get("formation_distance", 5.0)
+        formation_distance = self.parameters.get("formation_distance", 10.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
 
@@ -83,14 +84,26 @@ class FormasyonMission(Mission):
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # OffboardController'ı aktifleştir
-        self.step_controller.add_step(
-            Step("Offboard Moda Geç",
-                self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
-            )
+        # self.step_controller.add_step(
+        #     Step("Offboard Moda Geç",
+        #         self.drone_controller.enable_offboard_controller, 
+        #         self.drone_controller.enable_offboard_controller_check)
+        #     )
         # Formasyon ile konuma ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"
+            self.step_controller.add_step(
+                Step(
+                    "Açıyı Düzelt",
+                    lambda loc=target_location: self.drone_controller.rotate_formation(loc),
+                    lambda loc=target_location: self.drone_controller.goto_location_with_formation_check(loc)
+                )
+            )
+            self.step_controller.add_step(
+                Step("Offboard Moda Geç",
+                    self.drone_controller.enable_offboard_controller, 
+                    self.drone_controller.enable_offboard_controller_check)
+                )
             self.step_controller.add_step(
                 Step(
                     step_name, 
@@ -156,13 +169,36 @@ async def main(sim_instance=0):
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
+    target_locations1 = [
+        {
+            "latitude": 40.326037, 
+            "longitude": 36.473655,
+            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+        },
+        {
+            "latitude": 40.325634,
+            "longitude": 36.473806,
+            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+        },
+        {
+            "latitude": 40.325428,
+            "longitude": 36.473451,
+            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+        },
+    ]
     await drone.mavsdk_controller.connect()
     while not drone.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=takeoff_altitude, target_locations= target_locations2, user_selected_formation_type="cizgi", formation_distance=10.0, formation_duration=500)
+    mission = FormasyonMission(drone, drone_controller, 
+                                    takeoff_altitude=takeoff_altitude, 
+                                    target_locations=target_locations2, 
+                                    user_selected_formation_type="v", 
+                                    formation_distance=10.0, 
+                                    formation_duration=5000
+                                )
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

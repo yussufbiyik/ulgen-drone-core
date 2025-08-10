@@ -205,7 +205,7 @@ class Drone:
         except Exception as e:
             logging.error("Desteklenmeyen mesaj formatı, geçiliyor.")
             return
-        logging.info("Komşu drone mesajı alındı, işleniyor...")
+        logging.debug("Komşu drone mesajı alındı, işleniyor...")
         is_drone_status_message = message_raw[0].isdigit()
         if is_drone_status_message and int(message_raw[0]):
             self.process_drone_status_message(recieved_message)

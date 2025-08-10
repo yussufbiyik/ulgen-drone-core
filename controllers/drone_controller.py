@@ -1,6 +1,6 @@
 import sys 
 import asyncio
-import numpy as np
+import math
 import functools
 import logging
 
@@ -109,9 +109,11 @@ class DroneController:
         """
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
+        raw_altitude = await self.drone.mavsdk_controller.get_altitude()
         climbed = abs(gps_position["altitude"] - self.drone.pre_takeoff_location["altitude"])
+        climbed_fallback = abs(raw_altitude.altitude_relative_m - self.drone.pre_takeoff_location["altitude"])
         logging.debug(f"Drone hedef irtifa ile {climbed} metre mesafede.")
-        if abs(target_altitude - climbed) <= 0.5:
+        if (abs(target_altitude - climbed) <= 0.5) or (abs(target_altitude - climbed_fallback) <= 0.5):
             logging.info(f"Drone {target_altitude} metreye yeterince yakınlaştı.")
             return True
         return False
@@ -152,6 +154,7 @@ class DroneController:
         # Hedefe ulaşma durumunda True döndür
         if (distance_meters(gps_position, target_location) <= self.drone.waypoint_threshold):
             logging.info("Drone hedef konuma ulaştı.")
+            self.drone.offboard_status["target_position"] = None
             return True
         return False
     
@@ -296,40 +299,6 @@ class DroneController:
             return True
         return False
     
-    # async def goto_location_with_formation(self, target_location):
-    #     """
-    #     Drone'u belirli bir konuma götüren adım fonksiyonu.
-        
-    #     :param target_location: Hedef konum (latitude, longitude, altitude)
-    #     """
-    #     logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
-    #     general_info = await self.drone.mavsdk_controller.get_general_info()
-    #     gps_position = general_info["gps_position"]
-    #     drone_formation_position_at_target = await self.get_drone_formation_position(
-    #         self.drone.formation_type, 
-    #         self.drone.formation_distance, 
-    #         gps_position, 
-    #         target_location
-    #     )
-    #     drone_formation_position_at_target = {
-    #         "latitude": drone_formation_position_at_target[0]["latitude"],
-    #         "longitude": drone_formation_position_at_target[0]["longitude"],
-    #         "altitude": gps_position["altitude"]  # GPS yüksekliğine göre ayarlanır
-    #     }
-    #     self.drone.formation_position = drone_formation_position_at_target
-    #     self.drone.offboard_status["target_position"] = drone_formation_position_at_target
-    #     self.drone.offboard_status["altitude_to_keep"] = drone_formation_position_at_target["altitude"]
-
-    # async def goto_location_with_formation_check(self, target_location):
-    #     general_info = await self.drone.mavsdk_controller.get_general_info()
-    #     gps_position = general_info["gps_position"]
-    #     distance_to_target = distance_meters(gps_position, self.drone.formation_position)
-    #     # Hedefe ulaşma durumunda True döndür
-    #     if (distance_to_target <= self.drone.waypoint_threshold):
-    #         logging.info(f"Drone hedef konuma ulaştı, anlık konum: {gps_position}")
-    #         return True
-    #     return False
-
     async def goto_location_with_formation(self, target_location):
         """
         Drone'u belirli bir konuma götüren adım fonksiyonu.
@@ -340,9 +309,9 @@ class DroneController:
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
-        self_offset_x, self_offset_y = latlon_to_ned(gps_position, center_position)
+        self_offset_north, self_offset_east = latlon_to_ned(gps_position, center_position)
         target_lat_offset, target_lon_offset = ned_to_latlon(
-            self_offset_x, self_offset_y,
+            self_offset_north, self_offset_east,
             target_location["latitude"],
             target_location["longitude"]
         )
@@ -361,6 +330,50 @@ class DroneController:
         distance_to_target = distance_meters(gps_position, self.drone.formation_position)
         # Hedefe ulaşma durumunda True döndür
         if (distance_to_target <= self.drone.waypoint_threshold):
+            self.drone.offboard_status["target_position"] = None
             logging.info(f"Drone hedef konuma ulaştı, anlık konum: {gps_position}")
             return True
         return False
+    
+    async def rotate_formation(self, target_position):
+        """
+        Formasyonu belirli bir açıya döndürür.
+        
+        :param rotation_angle: Döndürme açısı (derece)
+        """
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
+        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
+        self_offset_north, self_offset_east = latlon_to_ned(gps_position, center_position)
+
+        rotation_angle = math.atan2(
+            center_position["longitude"] - target_position["longitude"],
+            center_position["latitude"] - target_position["latitude"]
+        )
+        drone_body_angle = math.degrees(math.atan2(
+            gps_position["longitude"] - center_position["longitude"],
+            gps_position["latitude"] - center_position["latitude"]
+        ))
+        
+        # X ve Y koordinatlarını döndür
+        rotated_x = self_offset_north * math.cos(rotation_angle) - self_offset_east * math.sin(rotation_angle)
+        rotated_y = self_offset_north * math.sin(rotation_angle) + self_offset_east * math.cos(rotation_angle)
+        # Yeni konumu hesapla
+        rotated_position_lat, rotated_position_lon = ned_to_latlon(rotated_x, rotated_y, center_position["latitude"], center_position["longitude"])
+        rotated_position = {
+            "latitude": rotated_position_lat,
+            "longitude": rotated_position_lon,
+            "altitude": gps_position["altitude"]  # GPS yüksekliğine göre ayarlanır
+        }
+        self.drone.formation_position = rotated_position
+        self.drone.offboard_status["is_active"] = False
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            rotated_position["latitude"],
+            rotated_position["longitude"],
+            rotated_position["altitude"],
+            drone_body_angle,  # yaw
+        )
+        # self.drone.offboard_status["is_active"] = True
+        # self.drone.offboard_status["target_position"] = rotated_position
+        # self.drone.offboard_status["altitude_to_keep"] = rotated_position["altitude"]
+        
