@@ -67,7 +67,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 3.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -122,7 +122,7 @@ class Drone:
             return
         neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
         if not neighbor:
-            logging.debug(f"Yeni komşu drone bulundu: {sender}, ekleniyor...")
+            logging.info(f"Yeni komşu drone bulundu: {sender}, ekleniyor...")
             message_data = {
                 "sender": sender,
                 "timestamp": message["timestamp"],
@@ -205,7 +205,7 @@ class Drone:
         except Exception as e:
             logging.error("Desteklenmeyen mesaj formatı, geçiliyor.")
             return
-        logging.debug("Komşu drone mesajı alındı, işleniyor...")
+        logging.info("Komşu drone mesajı alındı, işleniyor...")
         is_drone_status_message = message_raw[0].isdigit()
         if is_drone_status_message and int(message_raw[0]):
             self.process_drone_status_message(recieved_message)

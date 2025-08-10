@@ -30,11 +30,13 @@ class XBeeController:
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
         # self.configure_xbee_api_mode()
+        self.queue_thread = threading.Thread(target=self.queue_processor, daemon=True)
         if self.message_received_callback:
-            threading.Thread(target=self.queue_processor, daemon=True).start()
+            self.queue_thread.start()
             logging.warning("Mesaj kuyruğu işleme thread'i başlatıldı.")
         else:
             logging.warning("Mesaj alındığında çağrılacak callback fonksiyonu belirtilmemiş.")
+
     
     def queue_processor(self):
         """
@@ -55,6 +57,8 @@ class XBeeController:
         Xbee'den gelen mesajları işleyen callback fonksiyonu.
         """
         try:
+            if not self.queue_thread.is_alive() and self.message_received_callback:
+                self.queue_thread.start()
             message_data = message.data.decode('utf-8')
             sender = int.from_bytes(message.remote_device.get_64bit_addr().address, "big")
             message_full = {
@@ -63,7 +67,7 @@ class XBeeController:
                 "data": message_data,
                 "timestamp": message.timestamp
             }
-            logging.info(f"Mesaj alındı: {message_full}")
+            logging.debug(f"Mesaj alındı: {message_full}")
             try:
                 self.recent_messages.put_nowait(message_full)
                 logging.info("Mesaj kuyruğa eklendi")
