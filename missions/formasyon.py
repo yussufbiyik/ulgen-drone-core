@@ -41,6 +41,7 @@ class FormasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
         super().__init__("Formasyon", drone, **kwargs)
         self.drone_controller = drone_controller
+        self.step_controller.wait_for_neighbors = True
 
     async def run(self):
         # Görev modül olarak çağırıldığında
@@ -66,12 +67,12 @@ class FormasyonMission(Mission):
                 )
             )
         # Dİğer dronların irtifalarını almalarını bekle
-        self.step_controller.add_step(Step(
-                "Diğer Dronların İrtifalarını Bekle", 
-                lambda: print_message("Diğer dronların irtifalarını alması bekleniyor..."),
-                lambda: self.drone_controller.neighbor_altitude_check(takeoff_altitude)
-            )
-        )
+        # self.step_controller.add_step(Step(
+        #         "Diğer Dronların İrtifalarını Bekle", 
+        #         lambda: print_message("Diğer dronların irtifalarını alması bekleniyor..."),
+        #         lambda: self.drone_controller.neighbor_altitude_check(takeoff_altitude)
+        #     )
+        # )
         # OffboardController'ı aktifleştir
         self.step_controller.add_step(
             Step("Offboard Moda Geç",
@@ -94,9 +95,9 @@ class FormasyonMission(Mission):
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyonlar arası geçiş yap
-        self.step_controller.add_step(formation_step("ok", 5))
+        self.step_controller.add_step(formation_step("ok", formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
-        self.step_controller.add_step(formation_step("cizgi", 5))
+        self.step_controller.add_step(formation_step("cizgi", formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
@@ -128,6 +129,7 @@ async def main(sim_instance=0):
         xbee_controller=xbee_controller,
         isTesting=isTesting
     )
+    drone.waypoint_threshold = 0.5
     drone_controller = DroneController(drone)
     await drone.mavsdk_controller.connect()
     while not drone.mavsdk_controller.is_connected:
@@ -135,7 +137,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=5.0, formation_duration=100)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=15.0, formation_duration=100)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

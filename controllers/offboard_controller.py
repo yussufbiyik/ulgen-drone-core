@@ -41,7 +41,7 @@ class OffboardController:
         """
         PID kontrolü: hedef pozisyona yönelmek için hız vektörü üretir.
         """
-        dt = 0.05  # Sabit güncelleme süresi
+        dt = 0.1  # Sabit güncelleme süresi
         speed = self.drone.pid_ne.compute(distance, dt)
         vx = speed * math.cos(angle)
         vy = speed * math.sin(angle)
@@ -81,7 +81,7 @@ class OffboardController:
         while True:
             if not self.drone.offboard_status["is_active"]:
                 logging.debug("OffboardController kapalı, kontrol döngüsü atlanıyor.")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
                 continue
 
             if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active():
@@ -94,7 +94,7 @@ class OffboardController:
                     logging.debug("Offboard modu başlatıldı.")
                 except OffboardError as e:
                     logging.error(f"Offboard moduna geçiş başarısız: {e}")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.1)
                     continue
 
             target_pos = self.drone.offboard_status.get("target_position")
@@ -104,7 +104,7 @@ class OffboardController:
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
                     VelocityNedYaw(0.0, 0.0, 0.0, await self.drone.mavsdk_controller.get_yaw())
                 )
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.1)
                 continue
             current_data = await self.drone.mavsdk_controller.get_general_info()
             current_position = current_data["gps_position"]
@@ -138,12 +138,13 @@ class OffboardController:
                 vx, vy = await self.pid_controller(
                     d_north, d_east, distance, angle
                 )
+                # logging.info(f"PID Hız: vx={vx}, vy={vy}")
             apf_vx, apf_vy = await self.apf_controller()
 
             # Hızları birleştir ve sınırla
             vx = self.clamp_velocity(vx, self.drone.speed_limit) - apf_vx
             vy = self.clamp_velocity(vy, self.drone.speed_limit) - apf_vy
-
+            # logging.info(f"Son Hız: vx={vx}, vy={vy}, APF: vx={apf_vx}, vy={apf_vy}")
             # Dronun gittiği yöne doğru önünü dönmesi için
             if distance > self.drone.waypoint_threshold:
                 yaw = math.degrees(math.atan2(vy, vx)) if vx != 0 or vy != 0 else 0.0
@@ -157,5 +158,5 @@ class OffboardController:
             except OffboardError as e:
                 logging.error(f"Hız vektörü ayarlanamadı: {e}")
             
-            self.time_elapsed_since_last_target += 0.05
-            await asyncio.sleep(0.05)
+            self.time_elapsed_since_last_target += 0.1
+            await asyncio.sleep(0.1)

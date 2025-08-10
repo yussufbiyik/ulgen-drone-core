@@ -27,8 +27,9 @@ class PID:
 
     def compute(self, error, dt):
         # Alpha değerleri
-        input_alpha = 0.8
-        output_alpha = 0.8
+        input_alpha = 0.6
+        derivative_alpha = 0.15
+        output_alpha = 0.2
         v_min, v_max = self.min_output, self.max_output
         # Error için low-pass filtre uygulama
         error = low_pass_filter(error, self.prev_error, alpha=input_alpha)
@@ -41,7 +42,7 @@ class PID:
         self.integral += error * dt
 
         raw_derivative = (error - self.prev_error) / dt if dt > 0 else 0.0
-        derivative = low_pass_filter(raw_derivative, self.prev_derivative, alpha=0.95)
+        derivative = low_pass_filter(raw_derivative, self.prev_derivative, alpha=derivative_alpha)
         self.prev_derivative = derivative
         # Çıktı için low-pass filtre uygulama
         raw_output = (self.Kp * error) + (self.Ki * self.integral) + (self.Kd * derivative)

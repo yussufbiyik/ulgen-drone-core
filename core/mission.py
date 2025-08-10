@@ -17,7 +17,7 @@ class Mission:
         self.name = mission_name
         self.drone = drone
         self.parameters = kwargs
-        self.step_controller = StepController()
+        self.step_controller = StepController(drone)
         self.status = {
             "is_running": False,
             "start_time": None,
