@@ -180,6 +180,7 @@ class Drone:
                 "latitude": latitude,
                 "longitude": longitude
             }
+            # neighbor["data"]["target_status"] = bool(int(message_data[4]))
             logging.debug(f"{sender} drone'u, {latitude}, {longitude} hedef konumuna gidiyor.")
         elif message_data[1] == "ts":
             neighbor["data"]["target_status"] = bool(int(message_data[2]))

@@ -110,55 +110,28 @@ def assign_position(formation_positions, current_position, drone_id, neighbors=[
     """
     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
     """
-    available_positions = sorted(
-        formation_positions,
-        key=lambda pos: pos['latitude'] + pos['longitude']
-    )
-    original_drones = sorted(
-        [{"sender": drone_id, "data": {"gps_position": current_position}}, *neighbors],
-        key=lambda drone: int(drone["sender"])
-    )
-    all_drones = original_drones.copy()
-    
+    available_positions = copy.deepcopy(formation_positions)
+    all_drones = sorted([
+        {"sender": drone_id, "data": {"gps_position": current_position}},
+        *neighbors
+    ], key=lambda drone: int(drone["sender"]))
     assignments = {}
-    for position in available_positions:
+    sorted_positions = sorted([
+        {"latitude": pos['latitude'], "longitude": pos['longitude']}
+        for pos in available_positions
+    ], key=lambda pos: pos['latitude'] + pos['longitude'])
+    for position in sorted_positions:
+        closest_drone = None
         closest_drone = min(
             all_drones,
             key=lambda drone: (
-                distance_meters(drone["data"]["gps_position"], position),
-                original_drones.index(drone)  # fixed tie-break
+                distance_meters(drone["data"]["gps_position"], position)
             )
         )
+        logging.debug(f"Dron {closest_drone['sender']} için en yakın pozisyon: {position}, mesafe: {distance_meters(closest_drone['data']['gps_position'], position)}")
         assignments[closest_drone["sender"]] = position
         all_drones.remove(closest_drone)
-
-    return assignments[drone_id], assignments
-# def assign_position(formation_positions, current_position, drone_id, neighbors=[]):
-#     """
-#     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
-#     """
-#     available_positions = copy.deepcopy(formation_positions)
-#     all_drones = sorted([
-#         {"sender": drone_id, "data": {"gps_position": current_position}},
-#         *neighbors
-#     ], key=lambda drone: int(drone["sender"]))
-#     assignments = {}
-#     sorted_positions = sorted([
-#         {"latitude": pos['latitude'], "longitude": pos['longitude']}
-#         for pos in available_positions
-#     ], key=lambda pos: pos['latitude'] + pos['longitude'])
-#     for position in sorted_positions:
-#         closest_drone = min(
-#             all_drones,
-#             key=lambda drone: (
-#                 distance_meters(drone["data"]["gps_position"], position),
-#                 all_drones.index(drone)
-#             )
-#         )
-#         logging.debug(f"Dron {closest_drone['sender']} için en yakın pozisyon: {position}, mesafe: {distance_meters(closest_drone['data']['gps_position'], position)}")
-#         assignments[closest_drone["sender"]] = position
-#         all_drones.remove(closest_drone)
-#     closest_position = assignments[drone_id]
-#     logging.info(f"Dron {drone_id} için en yakın pozisyon: {closest_position}")
-#     return closest_position, assignments
+    closest_position = assignments[drone_id]
+    logging.info(f"Dron {drone_id} için en yakın pozisyon: {closest_position}")
+    return closest_position, assignments
     
