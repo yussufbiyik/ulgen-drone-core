@@ -8,6 +8,8 @@ from core.drone import Drone
 
 from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position, latlon_to_ned, ned_to_latlon
 
+from mavsdk.action import OrbitYawBehavior
+
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 def check_neighbors(func):
@@ -22,6 +24,7 @@ class DroneController:
     def __init__(self, drone: Drone):
         self.drone = drone
         self.time_waited_for_other_drones = 0
+        self.start_angle = 0.0  # Başlangıç açısı, formasyon döndürme işlemlerinde kullanılacak
 
     # Sık kullanılan drone işlemleri
     async def wait_for_proper_data(self):
@@ -344,16 +347,18 @@ class DroneController:
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
+        center_radius = distance_meters(gps_position, center_position)
         self_offset_north, self_offset_east = latlon_to_ned(gps_position, center_position)
 
         rotation_angle = math.atan2(
             center_position["longitude"] - target_position["longitude"],
             center_position["latitude"] - target_position["latitude"]
         )
-        drone_body_angle = math.degrees(math.atan2(
+        # İlk açıyı hesapla
+        self.start_angle = math.degrees(math.atan2(
             gps_position["longitude"] - center_position["longitude"],
             gps_position["latitude"] - center_position["latitude"]
-        ))
+        )) % 360
         
         # X ve Y koordinatlarını döndür
         rotated_x = self_offset_north * math.cos(rotation_angle) - self_offset_east * math.sin(rotation_angle)
@@ -367,13 +372,35 @@ class DroneController:
         }
         self.drone.formation_position = rotated_position
         self.drone.offboard_status["is_active"] = False
-        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
-            rotated_position["latitude"],
-            rotated_position["longitude"],
-            rotated_position["altitude"],
-            drone_body_angle,  # yaw
+        await self.drone.mavsdk_controller.mavsdk.action.do_orbit(
+            radius_m=center_radius,
+            velocity_ms=self.drone.speed_limit,
+            yaw_behavior=OrbitYawBehavior.HOLD_FRONT_TANGENT_TO_CIRCLE,  # Çember çizgisini izle
+            latitude_deg=center_position["latitude"],
+            longitude_deg=center_position["longitude"],
+            absolute_altitude_m=gps_position["altitude"]
         )
-        # self.drone.offboard_status["is_active"] = True
-        # self.drone.offboard_status["target_position"] = rotated_position
-        # self.drone.offboard_status["altitude_to_keep"] = rotated_position["altitude"]
         
+    async def rotate_formation_check(self, target_position):
+        """
+        Formasyonun döndürülüp döndürülmediğini kontrol eder.
+        
+        :param target_position: Hedef konum (latitude, longitude)
+        """
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
+        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
+        rotation_angle = math.atan2(
+            center_position["longitude"] - target_position["longitude"],
+            center_position["latitude"] - target_position["latitude"]
+        )
+        current_angle = math.degrees(math.atan2(
+            gps_position["longitude"] - center_position["longitude"],
+            gps_position["latitude"] - center_position["latitude"]
+        )) % 360
+        angle_diff = (current_angle - self.start_angle) % 360
+        print(f"Başlangıç açısı: {self.start_angle}, Mevcut açı: {current_angle}, Açı farkı: {angle_diff}")
+        if angle_diff >= rotation_angle:
+            await self.drone.mavsdk_controller.mavsdk.action.hold()
+            return True
+        return False
