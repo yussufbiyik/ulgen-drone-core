@@ -84,12 +84,6 @@ class FormasyonMission(Mission):
         self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
-        # OffboardController'ı aktifleştir
-        # self.step_controller.add_step(
-        #     Step("Offboard Moda Geç",
-        #         self.drone_controller.enable_offboard_controller, 
-        #         self.drone_controller.enable_offboard_controller_check)
-        #     )
         # Formasyon ile konuma ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"

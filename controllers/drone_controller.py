@@ -146,6 +146,7 @@ class DroneController:
             target_location["altitude"]+self.drone.pre_takeoff_location["altitude"],  # GPS yüksekliğine göre ayarlanır
             0,  # yaw
         )
+        await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
     async def goto_location_with_offboard(self, target_location):
         logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
         self.drone.offboard_status["target_position"] = target_location
@@ -291,6 +292,7 @@ class DroneController:
             gps_position["altitude"],  # GPS yüksekliğine göre ayarlanır
             0,  # yaw
         )
+        await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
 
     async def goto_formation_location_check(self):
         general_info = await self.drone.mavsdk_controller.get_general_info()
