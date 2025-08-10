@@ -42,15 +42,16 @@ bash ./PX4-Autopilot/Tools/setup/ubuntu.sh
 
 ### Tek Dron ile Simülasyon
 
-Simülasyonu şu komutlarla başlatabilirsiniz:
+Tek Dron ile simülasyon ortamı oluşturmak için `launch_drones.sh` scriptini aşağıdaki örnekteki gibi kullanın
 
 ```bash
-cd PX4-Autopilot
-make px4_sitl gz_x500
+# Örneğin:
+# ./launch_drones.sh <dron_sayısı>
+./launch_drones.sh 1
 ```
 
 ### Birden Fazla Dron ile Simülasyon
-Birden fazla dron ile simülasyon ortamı oluşturmak için `launch_drones.sh` scriptini aşağıdaki örnekteki gibi kullanın
+Tıpkı tek dron simülasyonundaki gibi `launch_drones.sh` scriptini kullanıp, dron sayısını istediğiniz şekilde girin
 ```bash
 # Örneğin:
 # ./launch_drones.sh <dron_sayısı>
@@ -75,13 +76,14 @@ Script, çalıştırılacak modülün Python yolu şeklinde bir argüman alır.
 **Kullanım biçimi:**
 
 ```bash
-python tester.py modul.konumu
+python tester.py modul.konumu calistirilacak_dron(sim_instance)
 ```
 
 **Örneğin:**
 
-`./missions/ucus_kanit.py` yolundaki görevi çalıştırmak için:
+`./missions/ucus_kanit.py` yolundaki görevi 1. dron ile çalıştırmak için:
 
 ```bash
-python tester.py missions.ucus_kanit
+python tester.py missions.formasyon 0
 ```
+2 ve 3. dronlar için ise 0 sayısını 1,2... şeklinde yükseltebilirsiniz

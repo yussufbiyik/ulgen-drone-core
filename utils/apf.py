@@ -1,8 +1,8 @@
 import logging
-from utils.formation_utilities import distance_meters, latlon_to_ned, detect_pose
+from utils.formation_utilities import distance_meters, latlon_to_ned
 
 class APF:
-    def __init__(self, repulsive_gain=0.000025, influence_radius=2.0, weight=0.1):
+    def __init__(self, repulsive_gain=0.000005, influence_radius=1.0, weight=0.1):
         """
         :param repulsive_gain: İtme kuvveti katsayısı
         :param influence_radius: Komşuları dikkate almak için maksimum mesafe (metre)
@@ -26,18 +26,8 @@ class APF:
 
         for neighbor in neighbors:
             neighbor_position = neighbor["data"]["gps_position"]
-            dx, dy = latlon_to_ned(
-                neighbor_position["latitude"],
-                neighbor_position["longitude"],
-                current_position["latitude"],
-                current_position["longitude"],
-            )
-            distance = distance_meters(
-                current_position["latitude"],
-                current_position["longitude"],
-                neighbor_position["latitude"],
-                neighbor_position["longitude"],
-            )
+            dx, dy = latlon_to_ned(neighbor_position, current_position)
+            distance = distance_meters(current_position, neighbor_position)
 
             if distance > self.influence_radius:
                 logging.debug(f"Komşu {distance} metre uzakta, itme kuvveti hesaplanmıyor.")

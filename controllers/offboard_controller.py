@@ -1,15 +1,21 @@
+import math
 import logging
 import asyncio
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw
 
-from utils.formation_utilities import latlon_to_ned
+from utils.formation_utilities import latlon_to_ned, get_distances_and_angles
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class OffboardController:
     def __init__(self, drone):
         self.drone = drone
+        self.prev_position = None
+        self.prev_ratio = 0.0
+        self.time_elapsed_since_last_target = 0.0
+        self.initial_navigation_duration = None
+        self.initial_distance_to_target = None
 
     def clamp_velocity(self, v, limit=1.0):
         """
@@ -30,21 +36,45 @@ class OffboardController:
         vx, vy = self.drone.apf.compute_apf(current_position, self.drone.neighbors)
         return vx, vy
 
-    async def pid_controller(self, target_position):
+    # PID ile Navigasyon
+    async def pid_controller(self, d_north, d_east, distance, angle):
         """
         PID kontrolü: hedef pozisyona yönelmek için hız vektörü üretir.
         """
-        current_data = await self.drone.mavsdk_controller.get_general_info()
-        current_position = current_data["gps_position"]
-
-        d_north, d_east = latlon_to_ned(
-            target_position["latitude"], target_position["longitude"],
-            current_position["latitude"], current_position["longitude"]
-        )
-
         dt = 0.1  # Sabit güncelleme süresi
-        vx = self.drone.pid_n.compute(d_north, dt)
-        vy = self.drone.pid_e.compute(d_east, dt)
+        speed = self.drone.pid_ne.compute(distance, dt)
+        vx = speed * math.cos(angle)
+        vy = speed * math.sin(angle)
+        return vx, vy
+    # Standart Mod ile Navigasyon
+    async def smooth_navigate(self, d_north, d_east, distance, angle, max_speed, navigation_duration = None):
+        """
+        Hedef konuma yumuşak bir gaz-fren profili ile ilerler
+        Navigasyon süresi varsa max_speed değişkeni aşılmayacak şekilde hızını ayarlar,
+        aksi halde sabit hızda ilerler.
+
+        :param current_location: Mevcut konum
+        :param target_location: Hedef konum
+        :param max_speed: Maksimum hız
+        :param navigation_duration: Navigasyon süresi
+        """
+        # Optimal duruş mesafesi, maksimum hızda 1 saniyede katedilen mesafe olarak belirlenir.
+        # Bu, aracın yavaşlamaya başlayacağı "frenleme bölgesini" tanımlar.
+        optimal_stop_distance = max_speed * 1.0
+
+        if distance > optimal_stop_distance:
+            # Eğer hedefe olan mesafe frenleme bölgesinden büyükse, maksimum hızla ilerle.
+            # Hız vektörü, hedef yönündeki birim vektörün max_speed ile çarpılmasıyla bulunur.
+            # (d_north / distance) ve (d_east / distance) ifadeleri yön vektörünü normalize eder.
+            vx = (d_north / distance) * max_speed
+            vy = (d_east / distance) * max_speed
+        else:
+            # Frenleme bölgesine girildiğinde, hız hedefe olan mesafe ile orantılı olarak azaltılır.
+            # Bu, hedefe yaklaştıkça aracın yavaşlamasını sağlayan basit bir P-kontrolördür (P=0.1).
+            # Bu sayede hedefe yumuşak bir şekilde varılır ve hedefi geçme riski azalır.
+            vx = d_north * 0.5
+            vy = d_east * 0.5
+        
         return vx, vy
 
     async def background_offboard_controller(self):
@@ -56,49 +86,77 @@ class OffboardController:
 
             if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active():
                 try:
+                    yaw = await self.drone.mavsdk_controller.get_yaw()
                     await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                        VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                        VelocityNedYaw(0.0, 0.0, 0.0, yaw)
                     )
                     await self.drone.mavsdk_controller.mavsdk.offboard.start()
                     logging.debug("Offboard modu başlatıldı.")
                 except OffboardError as e:
                     logging.error(f"Offboard moduna geçiş başarısız: {e}")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.1)
                     continue
 
             target_pos = self.drone.offboard_status.get("target_position")
-            alt_to_keep = self.drone.offboard_status.get("altitude_to_keep")
 
             if target_pos is None:
-                logging.warning("Hedef konum ayarlanmamış. Hover moduna geçiliyor.")
+                logging.warning("Hedef konum ayarlanmamış. Hover modu aktif.")
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(0.0, 0.0, 0.0, 0.0)
+                    VelocityNedYaw(0.0, 0.0, 0.0, await self.drone.mavsdk_controller.get_yaw())
                 )
                 await asyncio.sleep(0.1)
                 continue
-
-            # Güncel konum bilgisi
             current_data = await self.drone.mavsdk_controller.get_general_info()
             current_position = current_data["gps_position"]
+            d_north, d_east, distance, angle = get_distances_and_angles(current_position, target_pos)
 
-            # PID ve APF ile hızları hesapla
-            pid_vx, pid_vy = await self.pid_controller(target_pos)
+            # Hedef konum değişmişse
+            if self.prev_position != target_pos:
+                self.time_elapsed_since_last_target = 0.0
+                self.prev_position = target_pos
+                self.prev_ratio = 0.0
+                self.initial_distance_to_target = distance
+                self.initial_navigation_duration = distance / self.drone.speed_limit
+                # Yaw değerini hedefe doğru ayarla
+                yaw = math.degrees(math.atan2(
+                    target_pos["longitude"] - current_position["longitude"],
+                    target_pos["latitude"] - current_position["latitude"]
+                ))
+                self.drone.pid_ne.reset()
+                await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
+                    VelocityNedYaw(0.0, 0.0, 0.0, yaw)
+                )
+
+            if self.drone.offboard_status["navigation_method"] == "standard":
+                # Standart navigasyon
+                vx, vy = await self.smooth_navigate(
+                    d_north, d_east, distance, angle,
+                    self.drone.speed_limit
+                )
+            else:
+                # PID ve APF ile hızları hesapla
+                vx, vy = await self.pid_controller(
+                    d_north, d_east, distance, angle
+                )
+                # logging.info(f"PID Hız: vx={vx}, vy={vy}")
             apf_vx, apf_vy = await self.apf_controller()
 
-            # İrtifa kontrolü
-            error_z = alt_to_keep - current_position["altitude"]
-            vz = self.drone.pid_z.compute(error_z, 0.1)
-
             # Hızları birleştir ve sınırla
-            vx = self.clamp_velocity(pid_vx) + apf_vx
-            vy = self.clamp_velocity(pid_vy) + apf_vy
-            vz = self.clamp_velocity(vz)
+            vx = self.clamp_velocity(vx, self.drone.speed_limit) - apf_vx
+            vy = self.clamp_velocity(vy, self.drone.speed_limit) - apf_vy
+            # logging.info(f"Son Hız: vx={vx}, vy={vy}, APF: vx={apf_vx}, vy={apf_vy}")
+            # Dronun gittiği yöne doğru önünü dönmesi için
+            if distance > self.drone.waypoint_threshold:
+                yaw = math.degrees(math.atan2(vy, vx)) if vx != 0 or vy != 0 else 0.0
+            else:
+                yaw = await self.drone.mavsdk_controller.get_yaw()
 
             try:
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=-vz, yaw_deg=0.0)
+                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=0.0, yaw_deg=yaw)
                 )
             except OffboardError as e:
                 logging.error(f"Hız vektörü ayarlanamadı: {e}")
-
+            
+            self.time_elapsed_since_last_target += 0.1
             await asyncio.sleep(0.1)

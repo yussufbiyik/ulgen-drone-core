@@ -1,7 +1,7 @@
 import sys
-import time
 import logging
 import asyncio
+import time
 
 from core.mission import Mission
 
@@ -29,18 +29,32 @@ async def sleep_for_check(milliseconds):
         return True
     else:
         return False
-    
-class UcusKanitMission(Mission):
+
+async def print_message(message):
+    """
+    Mesajı yazdırır.
+    ( neden lazım diye sormayın {-_-} )
+    """
+    logging.info(message)
+
+class FormasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("KTR Video", drone, **kwargs)
+        super().__init__("Formasyon", drone, **kwargs)
         self.drone_controller = drone_controller
+        self.step_controller.wait_for_neighbors = True
 
     async def run(self):
         # Görev modül olarak çağırıldığında
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
-        hold_time = self.parameters.get("hold_time", 100.0)
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("KTR Video görevi başlatılıyor...")
+        # Parametreleri Al
+        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
+        formation_distance = self.parameters.get("formation_distance", 5.0)
+        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
+
+        logging.info("Formasyon görevi başlatılıyor...")
+        # Diğer dronlardan broadcast bekle
+        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
@@ -52,35 +66,26 @@ class UcusKanitMission(Mission):
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
             )
-        # OffboardController'ı aktifleştir
-        self.step_controller.add_step(
-            Step("Offboard Moda Geç",
-                self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
+        formation_step = lambda formation_name, distance: Step(
+                "Formasyona Gir",
+                lambda: self.drone_controller.goto_formation_location(formation_name, distance),
+                lambda: self.drone_controller.goto_formation_location_check()
             )
-        # Hedef noktalara ilerle
-        for i, target_location in enumerate(self.parameters.get("target_locations", [])):
-            step_name = f"{i+1} Numaralı Hedefe İlerle"
-            self.step_controller.add_step(
-                Step(
-                    step_name, 
-                    lambda loc=target_location: self.drone_controller.goto_location_with_offboard(loc), 
-                    lambda loc=target_location: self.drone_controller.goto_location_check(loc)
-                )
+        formation_hold_step = lambda hold_time: Step(
+                "Formasyonda Kal",
+                lambda: sleep_for(hold_time),
+                lambda: sleep_for_check(hold_time)
             )
-            self.step_controller.add_step(
-                Step(
-                    "Konumda Kal",
-                    lambda: sleep_for(hold_time),
-                    lambda: sleep_for_check(hold_time)
-                )
-            )
-            logging.info(f"{step_name} adımı eklendi.")
-        # Hedef konumlara ulaşıldıktan sonra zemine in
-        # Kontrol fonksiyonu olarak altitude_check fonksiyonu kullanılabilir
-        self.step_controller.add_step(Step("Land", self.drone_controller.land,
-                    lambda alt=0: self.drone_controller.altitude_check(alt)
-                ))
+        # Formasyona gir
+        self.step_controller.add_step(formation_step("cizgi", formation_distance))
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
+        # Bir süre formasyonda kal
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        # Formasyonlar arası geçiş yap
+        self.step_controller.add_step(formation_step("ok", formation_distance))
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
         self.step_controller.add_step(Step("Disarm Et", self.drone_controller.disarm, self.drone_controller.disarm_check, self.drone_controller.disarm_pre_check))
         logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
@@ -103,56 +108,22 @@ async def main(sim_instance=0):
     if not isTesting:
         xbee_controller = XBeeController(
             port=xbee_port(),
-            message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
+            message_received_callback=None
         )
     drone = Drone(
         mavsdk_controller=mavsdk_controller,
         xbee_controller=xbee_controller,
         isTesting=isTesting
     )
+    drone.waypoint_threshold = 0.5
     drone_controller = DroneController(drone)
-    takeoff_altitude = 10.0
-    target_locations1 = [
-        {
-            "latitude": 40.326037, 
-            "longitude": 36.473655,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 40.325634,
-            "longitude": 36.473806,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 40.325428,
-            "longitude": 36.473451,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-    ]
-    target_locations2 = [
-        {
-            "latitude": 47.397970,
-            "longitude": 8.546641,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 47.397742,
-            "longitude": 8.546451,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 47.397890,
-            "longitude": 8.546217,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-    ]
     await drone.mavsdk_controller.connect()
     while not drone.mavsdk_controller.is_connected:
         logging.info("Drone bağlantısı kuruluyor...")
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=takeoff_altitude, target_locations=target_locations2, hold_time=10000)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=10.0, formation_duration=500)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

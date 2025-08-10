@@ -123,7 +123,7 @@ class MAVSDKController:
                    health.is_accelerometer_calibration_ok and \
                    health.is_gyrometer_calibration_ok and \
                    health.is_global_position_ok:
-                    logging.info("Drone kalibrasyon bilgileri başarılı.")
+                    logging.debug("Drone kalibrasyon bilgileri başarılı.")
                     return True
                 else:
                     logging.warning("Drone kalibrasyon bilgileri başarısız, lütfen kontrol edin.")
@@ -231,6 +231,21 @@ class MAVSDKController:
         except Exception as e:
             logging.error(f"Yön bilgisi alınırken hata: {e}")
             return None
+        
+    @check_connected
+    async def get_altitude(self):
+        """
+        Drone'un irtifa bilgisini döndürür.
+        """
+        try:
+            async for altitude_information in self.mavsdk.telemetry.altitude():
+                return altitude_information
+        except asyncio.TimeoutError:
+            logging.error("Yön bilgisi alınırken zaman aşımına uğradı.")
+            return None
+        except Exception as e:
+            logging.error(f"Yön bilgisi alınırken hata: {e}")
+            return None
     
     @check_connected
     async def get_velocity(self):
@@ -249,6 +264,21 @@ class MAVSDKController:
             return None
         except Exception as e:
             logging.error(f"Anlık hız bilgisi alınırken hata: {e}")
+            return None
+        
+    @check_connected
+    async def get_yaw(self):
+        """
+        Drone'un yaw değerini döndürür.
+        """
+        try:
+            async for euler_angle in self.mavsdk.telemetry.attitude_euler():
+                return euler_angle.yaw_deg
+        except asyncio.TimeoutError:
+            logging.error("Anlık yaw bilgisi alınırken zaman aşımına uğradı.")
+            return None
+        except Exception as e:
+            logging.error(f"Anlık yaw bilgisi alınırken hata: {e}")
             return None
     
     def disconnect(self):
