@@ -87,3 +87,26 @@ python tester.py modul.konumu calistirilacak_dron(sim_instance)
 python tester.py missions.formasyon 0
 ```
 2 ve 3. dronlar için ise 0 sayısını 1,2... şeklinde yükseltebilirsiniz
+
+## Bilinen Buglar ve Sorunlar
+
+- [ ] Formasyona geçişte irtifa düşüşü
+- [ ] Formasyona geçişte diğer dronlara çok yakın olan tehlikeli rotalar izleme
+- [ ] Çok yakın mesafelerde zaman zaman PID kitlenmesi
+- [x] Sıklığı azaltılmış olsa da irtifa kontrolünde zaman zaman yaşanan kitlenme problemi (Dronun doğru irtifaya çıkamamasıyla veya irtifa hesabının hatalı olmasına bağlı olabilir)
+- [x] Komşu dronların ID hesaplarının XBee modunda sorunlu olması
+
+## Tamamlanan Görevler
+
+- 3B Formasyon Görevi
+  - [x] Simülasyon Testleri
+  - [ ] Saha Testleri
+- Formasyon ile Navigasyon Görevi
+  - [x] Simülasyon Testleri
+  - [ ] Saha Testleri
+- Birey Ekleme Çıkartma Görevi
+  - [ ] Simülasyon Testleri
+  - [ ] Saha Testleri
+- Sürü Keşif Görevi
+  - [ ] Simülasyon Testleri
+  - [ ] Saha Testleri
