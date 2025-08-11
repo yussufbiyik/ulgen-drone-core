@@ -52,15 +52,15 @@ class FormasyonMission(Mission):
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 10.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
 
         logging.info("Formasyon navigasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
-        # Arm et
-        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
+        # Arm et
+        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Takeoff yap
         self.step_controller.add_step(
             Step("Takeoff",
@@ -86,19 +86,19 @@ class FormasyonMission(Mission):
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyon ile konuma ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
-            step_name = f"{i+1} Numaralı Hedefe İlerle"
-            self.step_controller.add_step(
-                Step(
-                    "Açıyı Düzelt",
-                    lambda loc=target_location: self.drone_controller.rotate_formation(loc),
-                    lambda loc=target_location: self.drone_controller.rotate_formation_check(loc)
-                )
-            )
+            # self.step_controller.add_step(
+            #     Step(
+            #         "Açıyı Düzelt",
+            #         lambda loc=target_location: self.drone_controller.rotate_formation(loc),
+            #         lambda loc=target_location: self.drone_controller.rotate_formation_check(loc)
+            #     )
+            # )
             self.step_controller.add_step(
                 Step("Offboard Moda Geç",
                     self.drone_controller.enable_offboard_controller, 
                     self.drone_controller.enable_offboard_controller_check)
                 )
+            step_name = f"{i+1} Numaralı Hedefe İlerle"
             self.step_controller.add_step(
                 Step(
                     step_name, 
@@ -147,7 +147,8 @@ async def main(sim_instance=0):
     drone.waypoint_threshold = 0.5
     drone_controller = DroneController(drone)
     takeoff_altitude = 10.0
-    target_locations2 = [
+
+    sim_locations = [
         {
             "latitude": 47.397970,
             "longitude": 8.546641,
@@ -164,20 +165,20 @@ async def main(sim_instance=0):
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
-    target_locations1 = [
+    real_locations = [
         {
-            "latitude": 40.326037, 
-            "longitude": 36.473655,
+            "latitude": 40.326029,
+            "longitude": 36.473833,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325634,
-            "longitude": 36.473806,
+            "latitude": 40.325512,
+            "longitude": 36.473881,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325428,
-            "longitude": 36.473451,
+            "latitude": 40.325561,
+            "longitude": 36.473402,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
@@ -189,8 +190,8 @@ async def main(sim_instance=0):
     await drone_controller.wait_for_proper_data()
     mission = FormasyonMission(drone, drone_controller, 
                                     takeoff_altitude=takeoff_altitude, 
-                                    target_locations=target_locations2, 
-                                    user_selected_formation_type="v", 
+                                    target_locations=sim_locations if isTesting else real_locations, 
+                                    user_selected_formation_type="cizgi", 
                                     formation_distance=10.0, 
                                     formation_duration=5000
                                 )

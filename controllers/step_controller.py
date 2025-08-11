@@ -94,9 +94,11 @@ class StepController:
                         await asyncio.sleep(0.1)
             except Exception as e:
                 logging.exception(f"Adım {step.name} sırasında hata oluştu: {e}")
-                self.drone.mission_info["current_step"]["status"] = 2
+                logging.info("Acil iniş yapılıyor!")
+                self.drone.mission_info["current_step"]["status"] = 2 # Görevi hatalı olarak işaretle
                 step.is_completed = False
-        logging.info("Tüm adımlar başarıyla tamamlandı.")
+                await self.drone.mavsdk_controller.mavsdk.action.land()
+        logging.info(f"Tüm adımlar {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
         self.is_all_done = True
         return self.is_all_done
 

@@ -100,7 +100,7 @@ class OffboardController:
             target_pos = self.drone.offboard_status.get("target_position")
 
             if target_pos is None:
-                logging.warning("Hedef konum ayarlanmamış. Hover modu aktif.")
+                logging.debug("Hedef konum ayarlanmamış. Hover modu aktif.")
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
                     VelocityNedYaw(0.0, 0.0, 0.0, await self.drone.mavsdk_controller.get_yaw())
                 )

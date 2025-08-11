@@ -110,27 +110,35 @@ def assign_position(formation_positions, current_position, drone_id, neighbors=[
     """
     Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
     """
+    # Müsait pozisyonları kopyala
     available_positions = copy.deepcopy(formation_positions)
-    all_drones = sorted([
-        {"sender": drone_id, "data": {"gps_position": current_position}},
-        *neighbors
-    ], key=lambda drone: int(drone["sender"]))
+    # Dronları ID'ye göre sırala
+    original_drones = sorted(
+        [{"sender": drone_id, "data": {"gps_position": current_position}}, *neighbors],
+        key=lambda drone: int(str(drone["sender"]), 16)
+    )
+    # Pozisyonları deterministik olarak sırala (önce enlem, sonra boylam)
+    sorted_positions = sorted(
+        [{"latitude": pos['latitude'], "longitude": pos['longitude']} for pos in available_positions],
+        key=lambda pos: (pos['latitude'], pos['longitude'])
+    )
+    assigned_drones = set()
     assignments = {}
-    sorted_positions = sorted([
-        {"latitude": pos['latitude'], "longitude": pos['longitude']}
-        for pos in available_positions
-    ], key=lambda pos: pos['latitude'] + pos['longitude'])
     for position in sorted_positions:
-        closest_drone = None
+        # En yakın drone'u bul, eşitlik durumunda orijinal sıraya göre seç
         closest_drone = min(
-            all_drones,
-            key=lambda drone: (
-                distance_meters(drone["data"]["gps_position"], position)
+            (d for d in original_drones if d["sender"] not in assigned_drones),
+            key=lambda d: (
+                distance_meters(d["data"]["gps_position"], position),
+                original_drones.index(d)  # eşitlik bozucu
             )
         )
-        logging.debug(f"Dron {closest_drone['sender']} için en yakın pozisyon: {position}, mesafe: {distance_meters(closest_drone['data']['gps_position'], position)}")
+        logging.debug(
+            f"Dron {closest_drone['sender']} için en yakın pozisyon: {position}, "
+            f"mesafe: {distance_meters(closest_drone['data']['gps_position'], position)}"
+        )
         assignments[closest_drone["sender"]] = position
-        all_drones.remove(closest_drone)
+        assigned_drones.add(closest_drone["sender"])
     closest_position = assignments[drone_id]
     logging.info(f"Dron {drone_id} için en yakın pozisyon: {closest_position}")
     return closest_position, assignments

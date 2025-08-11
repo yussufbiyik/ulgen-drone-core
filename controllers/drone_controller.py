@@ -20,6 +20,10 @@ def check_neighbors(func):
         return await func(self, *args, **kwargs)
     return wrapper
 
+def normalize_angle_deg(angle):
+    """Normalize angle to [0, 360) degrees."""
+    return angle % 360
+    
 class DroneController:
     def __init__(self, drone: Drone):
         self.drone = drone
@@ -104,8 +108,8 @@ class DroneController:
         
         :param altitude: Kalkış yüksekliği
         """
-        await self.drone.mavsdk_controller.mavsdk.action.set_takeoff_altitude(altitude)
         await self.drone.mavsdk_controller.mavsdk.action.takeoff()
+        await self.drone.mavsdk_controller.mavsdk.action.set_takeoff_altitude(altitude)
     async def altitude_check(self, target_altitude):
         """
         Drone'un irtifasını kontrol eden fonksiyon.
@@ -160,6 +164,7 @@ class DroneController:
             logging.info("Drone hedef konuma ulaştı.")
             self.drone.offboard_status["target_position"] = None
             return True
+        logging.info(f"Drone hedef konuma ulaşamadı, mesafe: {distance_meters(gps_position, target_location)} metre.")
         return False
     
     async def land(self): 
@@ -202,6 +207,7 @@ class DroneController:
                 return False
         logging.info("Tüm komşu dronlar yeterli irtifaya sahip.")
         return True
+    
     async def neighbor_formation_check(self):
         """
         Diğer dronların formasyon durumunu kontrol eder.
@@ -216,6 +222,7 @@ class DroneController:
                 return False
         logging.info("Tüm komşu dronlar formasyon konumunda.")
         return True
+    
     async def get_drone_formation_position(self, formation_type, formation_distance, gps_position, center_position=None):
         """
         Drone'u formasyon konumuna taşır.
@@ -235,10 +242,17 @@ class DroneController:
     async def resolve_position_conflicts(self, position_assignments, target_location):
         loop_count = 0
         while True:
-            await self.drone.broadcast_message(f"m,t,{target_location['latitude']:.7f},{target_location['longitude']:.7f}")
+            # Mevcut hedef pozisyonu diğer dronlara yayınla
+            await self.drone.broadcast_message(
+                f"m,t,{target_location['latitude']:.7f},{target_location['longitude']:.7f}"
+            )
+
+            # Fazla döngüden kaçınmak için güvenlik kontrolü
             if loop_count > 2:
                 logging.warning("Çok fazla döngüde kaldı, formasyon kabul edildi.")
                 await self.drone.broadcast_message(f"m,ts,1")
+
+                # Tüm komşu dronlar hedefi kabul etti mi kontrol et
                 did_others_complete = all(
                     neighbor["data"].get("target_status", True)
                     for neighbor in self.drone.neighbors
@@ -246,32 +260,46 @@ class DroneController:
                 if did_others_complete:
                     logging.info("Tüm komşu dronlar formasyon konumlarını kabul etti.")
                     return target_location
+
+            # Komşuların hedef pozisyonlarını topla
             neighbor_target_positions = [
                 {"sender": neighbor["sender"], "target": neighbor["data"]["target_position"]}
                 for neighbor in self.drone.neighbors
                 if "target_position" in neighbor["data"]
             ]
+
+            # Çakışan pozisyonları bul (1 metre içinde)
             conflicting_positions = [
                 neighbor
                 for neighbor in neighbor_target_positions
-                if distance_meters(neighbor["target"], target_location) < 1.0
-                # and self.drone.xbee_id > neighbor["sender"]
+                if round(distance_meters(neighbor["target"], target_location), 3) < 1.000
             ]
-            print(conflicting_positions)
+
+            # Çakışma yoksa devam et
             if (len(neighbor_target_positions) >= 2 and not conflicting_positions) or len(conflicting_positions) == 0:
-                logging.info(f"Formasyon konumu sorunsuz.")
+                logging.info("Formasyon konumu sorunsuz.")
             else:
-                swap_position = position_assignments[conflicting_positions[0]["sender"]]
-                logging.info(f"Değişim pozisyonu: {swap_position}")
-                if swap_position:
-                    target_location = {
-                        "latitude": swap_position["latitude"],
-                        "longitude": swap_position["longitude"]
-                    }
+                # Çakışma varsa deterministik olarak en küçük ID'li drona öncelik ver
+                conflicting_positions.sort(key=lambda n: int(str(n["sender"]), 16))
+                lowest_id = conflicting_positions[0]["sender"]
+
+                if int(str(self.drone.xbee_id), 16) > int(str(lowest_id), 16):
+                    # Daha büyük ID'ye sahip olan dron konumunu değiştirsin
+                    swap_position = position_assignments[lowest_id]
+                    logging.info(f"Değişim pozisyonu: {swap_position}")
+                    if swap_position:
+                        target_location = {
+                            "latitude": swap_position["latitude"],
+                            "longitude": swap_position["longitude"]
+                        }
+                    else:
+                        logging.warning("Tüm komşu dronlar formasyon konumunu işgal ediyor, bekleniyor...")
                 else:
-                    logging.warning("Tüm komşu dronlar formasyon konumunu işgal ediyor, bekleniyor...")
+                    logging.info(f"Dron {self.drone.xbee_id} çakışmada öncelikli, konumunu koruyor.")
+
             loop_count += 1
             await asyncio.sleep(1.5)
+
     async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
@@ -280,6 +308,7 @@ class DroneController:
         self.drone.formation_position = target_location
         self.drone.offboard_status["target_position"] = target_location
         self.drone.offboard_status["altitude_to_keep"] = gps_position["altitude"]
+
     async def goto_formation_location(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
@@ -304,6 +333,7 @@ class DroneController:
             return True
         return False
     
+    # Formasyon ile navigasyon ile alakalı fonksiyonlar
     async def goto_location_with_formation(self, target_location):
         """
         Drone'u belirli bir konuma götüren adım fonksiyonu.
@@ -339,70 +369,54 @@ class DroneController:
             logging.info(f"Drone hedef konuma ulaştı, anlık konum: {gps_position}")
             return True
         return False
-    
+
+
     async def rotate_formation(self, target_position):
-        """
-        Formasyonu belirli bir açıya döndürür.
-        
-        :param rotation_angle: Döndürme açısı (derece)
-        """
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
         center_radius = distance_meters(gps_position, center_position)
-        self_offset_north, self_offset_east = latlon_to_ned(gps_position, center_position)
 
-        rotation_angle = math.atan2(
-            center_position["longitude"] - target_position["longitude"],
-            center_position["latitude"] - target_position["latitude"]
-        )
-        # İlk açıyı hesapla
-        self.start_angle = math.degrees(math.atan2(
+        # Initial angle from center to this drone
+        self.start_angle = normalize_angle_deg(math.degrees(math.atan2(
             gps_position["longitude"] - center_position["longitude"],
             gps_position["latitude"] - center_position["latitude"]
-        )) % 360
-        
-        # X ve Y koordinatlarını döndür
-        rotated_x = self_offset_north * math.cos(rotation_angle) - self_offset_east * math.sin(rotation_angle)
-        rotated_y = self_offset_north * math.sin(rotation_angle) + self_offset_east * math.cos(rotation_angle)
-        # Yeni konumu hesapla
-        rotated_position_lat, rotated_position_lon = ned_to_latlon(rotated_x, rotated_y, center_position["latitude"], center_position["longitude"])
-        rotated_position = {
-            "latitude": rotated_position_lat,
-            "longitude": rotated_position_lon,
-            "altitude": gps_position["altitude"]  # GPS yüksekliğine göre ayarlanır
-        }
-        self.drone.formation_position = rotated_position
+        )))
+
+        # Target angle from center to target_position
+        self.target_angle = normalize_angle_deg(math.degrees(math.atan2(
+            target_position["longitude"] - center_position["longitude"],
+            target_position["latitude"] - center_position["latitude"]
+        )))
+
+        # Required rotation (shortest path)
+        self.required_rotation = (self.target_angle - self.start_angle) % 360
+
         self.drone.offboard_status["is_active"] = False
         await self.drone.mavsdk_controller.mavsdk.action.do_orbit(
             radius_m=center_radius,
             velocity_ms=self.drone.speed_limit,
-            yaw_behavior=OrbitYawBehavior.HOLD_FRONT_TANGENT_TO_CIRCLE,  # Çember çizgisini izle
+            yaw_behavior=OrbitYawBehavior.HOLD_FRONT_TANGENT_TO_CIRCLE,
             latitude_deg=center_position["latitude"],
             longitude_deg=center_position["longitude"],
             absolute_altitude_m=gps_position["altitude"]
         )
-        
+
     async def rotate_formation_check(self, target_position):
-        """
-        Formasyonun döndürülüp döndürülmediğini kontrol eder.
-        
-        :param target_position: Hedef konum (latitude, longitude)
-        """
         general_info = await self.drone.mavsdk_controller.get_general_info()
         gps_position = general_info["gps_position"]
         center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
-        rotation_angle = math.atan2(
-            center_position["longitude"] - target_position["longitude"],
-            center_position["latitude"] - target_position["latitude"]
-        )
-        current_angle = math.degrees(math.atan2(
+
+        current_angle = normalize_angle_deg(math.degrees(math.atan2(
             gps_position["longitude"] - center_position["longitude"],
             gps_position["latitude"] - center_position["latitude"]
-        )) % 360
+        )))
+        
         angle_diff = (current_angle - self.start_angle) % 360
-        print(f"Başlangıç açısı: {self.start_angle}, Mevcut açı: {current_angle}, Açı farkı: {angle_diff}")
-        if angle_diff >= rotation_angle:
+
+        # print(f"Start: {self.start_angle}, Current: {current_angle}, Target: {self.target_angle}, Diff: {angle_diff}")
+
+        if angle_diff >= self.required_rotation:
             await self.drone.mavsdk_controller.mavsdk.action.hold()
             return True
         return False

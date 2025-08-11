@@ -55,10 +55,10 @@ class FormasyonMission(Mission):
         logging.info("Formasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
-        # Arm et
-        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
+        # Arm et
+        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Takeoff yap
         self.step_controller.add_step(
             Step("Takeoff",
@@ -77,13 +77,12 @@ class FormasyonMission(Mission):
                 lambda: sleep_for_check(hold_time)
             )
         # Formasyona gir
-        self.step_controller.add_step(formation_step("cizgi", formation_distance))
-        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
-        # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyonlar arası geçiş yap
         self.step_controller.add_step(formation_step("ok", formation_distance))
+        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        self.step_controller.add_step(formation_step("v", formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
@@ -123,7 +122,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=10.0, formation_duration=500)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="cizgi", formation_distance=10.0, formation_duration=500)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

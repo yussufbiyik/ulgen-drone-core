@@ -54,7 +54,7 @@ class Drone:
         self.mavsdk_controller = mavsdk_controller
         
         if not self.isTesting:
-            self.xbee_controller.message_received_callback = self.handle_message_received
+            self.xbee_controller.set_message_received_callback(self.handle_message_received)
             self.xbee_controller.listen()
             logging.info("XBee iletişimi başlatıldı.")
         else:
@@ -75,6 +75,7 @@ class Drone:
             "altitude_to_keep": 0.0,
             "target_position": None,
             "navigation_method": "pid", # "standard" veya "pid"
+            "is_on_target": False,
         }
         # Formasyon için gerekli değişkenler
         self.formation_position = None

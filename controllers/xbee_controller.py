@@ -1,3 +1,4 @@
+import sys
 import json
 import threading
 import time
@@ -47,22 +48,30 @@ class XBeeController:
                 time.sleep(0.1)
                 continue
             message = self.recent_messages.get(timeout=0.5)
-            logging.info(f"Mesaj işleniyor: {message}")
+            logging.debug(f"Mesaj işleniyor: {message}")
             self.message_received_callback(message)
-            logging.info("Callback çağrıldı.")
+            logging.debug("Callback çağrıldı.")
             self.recent_messages.task_done()
+
+    def set_message_received_callback(self, callback):
+        """
+        XBee'den gelen mesajları işlemek için callback fonksiyonunu ayarlar.
+        """
+        self.message_received_callback = callback
+        if not self.queue_thread.is_alive():
+            self.queue_thread = threading.Thread(target=self.queue_processor, daemon=True)
+            self.queue_thread.start()
+            logging.info("Mesaj kuyruğu işleme thread'i yeniden başlatıldı.")
     
     def default_message_received_callback(self, message):
         """
         Xbee'den gelen mesajları işleyen callback fonksiyonu.
         """
         try:
-            if not self.queue_thread.is_alive() and self.message_received_callback:
-                self.queue_thread.start()
             message_data = message.data.decode('utf-8')
             sender = int.from_bytes(message.remote_device.get_64bit_addr().address, "big")
             message_full = {
-                "sender": f"{sender:016X}",
+                "sender": sender,
                 "isBroadcast": message.is_broadcast,
                 "data": message_data,
                 "timestamp": message.timestamp
@@ -70,11 +79,11 @@ class XBeeController:
             logging.debug(f"Mesaj alındı: {message_full}")
             try:
                 self.recent_messages.put_nowait(message_full)
-                logging.info("Mesaj kuyruğa eklendi")
+                logging.debug("Mesaj kuyruğa eklendi")
             except Full:
                 logging.error(f"Mesaj kuyruğa eklenemedi, kuyruk dolu.")
                 # Kuyruk doluysa en eski mesajı sil ve yeni mesajı ekle
-                logging.info("En eski mesaj siliniyor ve yeni mesaj ekleniyor.")
+                logging.debug("En eski mesaj siliniyor ve yeni mesaj ekleniyor.")
                 self.recent_messages.get_nowait()
                 self.recent_messages.put_nowait(message_full)
         except Exception as e:
