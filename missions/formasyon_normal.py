@@ -54,7 +54,7 @@ class FormasyonMission(Mission):
 
         logging.info("Formasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
-        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
+        self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(1)))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Arm et
@@ -94,7 +94,7 @@ class FormasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = False
+    isTesting = True
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),

@@ -98,7 +98,7 @@ class StepController:
                 self.drone.mission_info["current_step"]["status"] = 2 # Görevi hatalı olarak işaretle
                 step.is_completed = False
                 await self.drone.mavsdk_controller.mavsdk.action.land()
-        logging.info(f"Tüm adımlar {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
+        logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
         self.is_all_done = True
         return self.is_all_done
 

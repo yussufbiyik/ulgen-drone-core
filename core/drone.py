@@ -49,7 +49,7 @@ class Drone:
         self.fake_id = random.randint(10000, 99999) if isTesting else None
         # XBee
         self.xbee_controller = xbee_controller
-        self.xbee_id = self.xbee_controller.address
+        self.xbee_id = self.xbee_controller.address if self.xbee_controller else self.fake_id
         # MAVSDK
         self.mavsdk_controller = mavsdk_controller
         

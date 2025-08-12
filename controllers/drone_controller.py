@@ -62,14 +62,14 @@ class DroneController:
         Drone'un diğer dronların broadcast mesajlarını beklediği adım fonksiyonu.
         """
         logging.info("Diğer dronların broadcast mesajları bekleniyor...")
-    async def wait_for_broadcast_check(self, minimum_neighbor_count=1):
+    async def wait_for_broadcast_check(self, minimum_neighbor_count=1, try_count=2):
         """
         Drone'un diğer dronların broadcast mesajlarını alıp almadığını kontrol eden fonksiyon.
         """
-        if len(self.drone.neighbors) > 0:
+        if len(self.drone.neighbors) >= minimum_neighbor_count:
             logging.info(f"Şu anda {len(self.drone.neighbors)} tane komşu drone var.")
             logging.info("Daha başka dronların olma ihtimaline karşın biraz daha bekleniyor.")
-            if self.time_waited_for_other_drones < 2:
+            if self.time_waited_for_other_drones < try_count:
                 self.time_waited_for_other_drones += 1
                 await asyncio.sleep(1)
                 return False
