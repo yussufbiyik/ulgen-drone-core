@@ -115,7 +115,7 @@ def assign_position(formation_positions, current_position, drone_id, neighbors=[
     # Dronları ID'ye göre sırala
     original_drones = sorted(
         [{"sender": drone_id, "data": {"gps_position": current_position}}, *neighbors],
-        key=lambda drone: int(str(drone["sender"]), 16)
+        key=lambda drone: int(drone["sender"])
     )
     # Pozisyonları deterministik olarak sırala (önce enlem, sonra boylam)
     sorted_positions = sorted(

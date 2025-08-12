@@ -49,7 +49,7 @@ class Drone:
         self.fake_id = random.randint(10000, 99999) if isTesting else None
         # XBee
         self.xbee_controller = xbee_controller
-        self.xbee_id = self.xbee_controller.address if not self.isTesting else self.fake_id
+        self.xbee_id = self.xbee_controller.address
         # MAVSDK
         self.mavsdk_controller = mavsdk_controller
         
@@ -118,7 +118,7 @@ class Drone:
         """
         sender = message["sender"]
         message_data = message['data'].split(',')
-        if len(message_data) < 7:
+        if len(message_data) < 9:
             logging.warning("Mesaj verisi eksik, geçiliyor.")
             return
         neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)

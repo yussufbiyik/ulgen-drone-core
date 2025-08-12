@@ -26,7 +26,8 @@ class XBeeController:
         self.port = port
         self.baudrate = baudrate
         self.device = XBeeDevice(port, baudrate)
-        self.address = self.device.get_16bit_addr()
+        self.device.open()
+        self.address = int.from_bytes(self.device.get_64bit_addr().address, "big")
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
@@ -131,6 +132,7 @@ class XBeeController:
         try:
             if not self.device.is_open():
                 self.device.open()
+                self.address = int.from_bytes(self.device.get_64bit_addr().address, "big")
             self.device.add_data_received_callback(self.default_message_received_callback)
             logging.info("XBee dinleniyor...")
         except Exception as e:
@@ -161,7 +163,7 @@ class XBeeController:
                 message = data
             logging.debug(f"Broadcast mesajı yapılandırıldı: {message}")
             self.device.send_data_broadcast(message)
-            logging.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: Broadcast")
+            logging.debug(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: Broadcast")
             return True
         except XBeeException as e:
             logging.error(f"XBee Hatası: {e}")
@@ -184,7 +186,7 @@ class XBeeController:
         message = self.construct_message(data)
         try:
             self.device.send_data(receiver, message)
-            logging.info(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: {receiver}")
+            logging.debug(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: {receiver}")
             return True
         except Exception as e:
             logging.error(f"Mesaj gönderilemedi: {e}")

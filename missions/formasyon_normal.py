@@ -50,7 +50,7 @@ class FormasyonMission(Mission):
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 5.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
 
         logging.info("Formasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
@@ -94,13 +94,13 @@ class FormasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_port = lambda: None if isTesting else f"/dev/ttyUSB{sim_instance}"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
