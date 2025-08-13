@@ -27,10 +27,10 @@ def format_broadcast_message(message):
     is_armed = 1 if message["armed"] else 0
     flight_mode = message["flight_mode"]
     battery = int(message["battery"])
-    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f},{format(message['gps_position']['altitude'], '.4f')}"
-    velocity = f"{message['velocity']['north']},{message['velocity']['east']},{message['velocity']['down']}"
-    mission = f"{message['mission']['current_step']['index']},{message['mission']['current_step']['status']}"
-    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string},{mission}"
+    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f},{message['gps_position']['altitude']:.4f}".replace('.', '')
+    velocity = f"{message['velocity']['north']:.1f},{message['velocity']['east']:.1f},{message['velocity']['down']:.1f}".replace('.', '')
+    mission = f"{message['mission']['current_step']['index']}{message['mission']['current_step']['status']}"
+    new_message = f"{is_armable}{is_armed}{flight_mode}{battery},{gps_string},{mission},{velocity}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
@@ -85,7 +85,7 @@ class Drone:
         self.neighbor_formation_positions = []
         self.mission_info = {
             "current_step": {
-                "index": None,
+                "index": 0,
                 "status": 0
             }
         }
@@ -118,31 +118,37 @@ class Drone:
         """
         sender = message["sender"]
         message_data = message['data'].split(',')
-        if len(message_data) < 9:
+        if len(message_data) <= 4:
             logging.warning("Mesaj verisi eksik, geçiliyor.")
             return
         neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
+        is_armable = bool(int(message_data[0][0]))
+        is_armed = bool(int(message_data[0][1]))
+        flight_mode = int(message_data[0][2])
+        battery = int(message_data[0][3]+message_data[0][4])
+        gps_position = {
+            "latitude": int(float(message_data[1]))/10**6,
+            "longitude": int(float(message_data[2]))/10**6,
+            "altitude": int(float(message_data[3]))/10**4
+        }
+        mission = {
+            "current_step": {
+                "index": int(message_data[4][:-1]),
+                "status": int(message_data[4][-1]),
+            }
+        }
         if not neighbor:
             logging.info(f"Yeni komşu drone bulundu: {sender}, ekleniyor...")
             message_data = {
                 "sender": sender,
                 "timestamp": message["timestamp"],
                 "data": {
-                    "armable": bool(int(message_data[0])),
-                    "armed": bool(int(message_data[1])),
-                    "flight_mode": int(message_data[2]),
-                    "battery": int(message_data[3]),
-                    "gps_position": {
-                        "latitude": float(message_data[4]),
-                        "longitude": float(message_data[5]),
-                        "altitude": float(message_data[6])
-                    },
-                    "mission": {
-                        "current_step": {
-                            "index": int(message_data[7]),
-                            "status": int(message_data[8]),
-                        }
-                    },
+                    "armable": is_armable,
+                    "armed": is_armed,
+                    "flight_mode": flight_mode,
+                    "battery": battery,
+                    "gps_position": gps_position,
+                    "mission": mission,
                 }
             }
             self.neighbors.append(message_data)
@@ -150,17 +156,12 @@ class Drone:
         else:
             logging.debug(f"{sender} zaten mevcut:, güncelleniyor ({(message['timestamp'] - time.time()):.2f}ms).")
             data = neighbor["data"]
-            gps = data["gps_position"]
-            mission_step = data["mission"]["current_step"]
-            data["armable"] = bool(int(message_data[0]))
-            data["armed"] = bool(int(message_data[1]))
-            data["flight_mode"] = int(message_data[2])
-            data["battery"] = int(message_data[3])
-            gps["latitude"] = float(message_data[4])
-            gps["longitude"] = float(message_data[5])
-            gps["altitude"] = float(message_data[6])
-            mission_step["index"] = int(message_data[7])
-            mission_step["status"] = int(message_data[8])
+            data["armable"] = is_armable
+            data["armed"] = is_armed
+            data["flight_mode"] = flight_mode
+            data["battery"] = battery
+            data["gps_position"] = gps_position
+            data["mission"]["current_step"] = mission["current_step"]
 
     def process_mission_message(self, message):
         """
@@ -172,21 +173,20 @@ class Drone:
             logging.warning(f"Komşu drone bulunamadı: {sender}, mesaj işlenemiyor.")
             return
         message_data = message['data'].split(',')
-        if message_data[1] == "t":
+        if message_data[0] == "mt":
             # Formasyon konumuna gitme mesajı
-            if len(message_data) < 3:
+            if len(message_data) < 2:
                 logging.warning("Formasyon konumu mesajı eksik, geçiliyor.")
                 return
-            latitude = float(message_data[2])
-            longitude = float(message_data[3])
+            latitude = int(message_data[1])/10**6
+            longitude = int(message_data[2])/10**6
             neighbor["data"]["target_position"] = {
                 "latitude": latitude,
                 "longitude": longitude
             }
-            # neighbor["data"]["target_status"] = bool(int(message_data[4]))
             logging.debug(f"{sender} drone'u, {latitude}, {longitude} hedef konumuna gidiyor.")
-        elif message_data[1] == "ts":
-            neighbor["data"]["target_status"] = bool(int(message_data[2]))
+        elif message_data[0] == "mts":
+            neighbor["data"]["target_status"] = int(message_data[1])
             logging.debug(f"{sender} drone'u, formasyon hesaplarını tamamladı.")
 
     def handle_message_received(self, recieved_message):
@@ -196,7 +196,6 @@ class Drone:
         :param message: XBee'den alınan mesaj
         """
         # Örnek data
-        # 1,1,6,50,47.3977058,8.5460053,1.3350
         sender = recieved_message["sender"]
         if not sender:
             logging.error(f"Mesajın göndereni belirtilmemiş, geçiliyor.")
@@ -210,7 +209,7 @@ class Drone:
         is_drone_status_message = message_raw[0].isdigit()
         if is_drone_status_message and int(message_raw[0]):
             self.process_drone_status_message(recieved_message)
-        elif message_raw[0] == "m":
+        elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
 
     async def broadcast_message(self, message):

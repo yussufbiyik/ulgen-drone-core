@@ -244,13 +244,12 @@ class DroneController:
         while True:
             # Mevcut hedef pozisyonu diğer dronlara yayınla
             await self.drone.broadcast_message(
-                f"m,t,{target_location['latitude']:.7f},{target_location['longitude']:.7f}"
+                f"mt,{target_location['latitude']:.6f},{target_location['longitude']:.6f}".replace('.', '')
             )
-
             # Fazla döngüden kaçınmak için güvenlik kontrolü
             if loop_count > 2:
                 logging.warning("Çok fazla döngüde kaldı, formasyon kabul edildi.")
-                await self.drone.broadcast_message(f"m,ts,1")
+                await self.drone.broadcast_message(f"mts,1")
 
                 # Tüm komşu dronlar hedefi kabul etti mi kontrol et
                 did_others_complete = all(
@@ -260,21 +259,18 @@ class DroneController:
                 if did_others_complete:
                     logging.info("Tüm komşu dronlar formasyon konumlarını kabul etti.")
                     return target_location
-
             # Komşuların hedef pozisyonlarını topla
             neighbor_target_positions = [
                 {"sender": neighbor["sender"], "target": neighbor["data"]["target_position"]}
                 for neighbor in self.drone.neighbors
                 if "target_position" in neighbor["data"]
             ]
-
             # Çakışan pozisyonları bul (1 metre içinde)
             conflicting_positions = [
                 neighbor
                 for neighbor in neighbor_target_positions
                 if round(distance_meters(neighbor["target"], target_location), 3) < 1.000
             ]
-
             # Çakışma yoksa devam et
             if (len(neighbor_target_positions) >= 2 and not conflicting_positions) or len(conflicting_positions) == 0:
                 logging.info("Formasyon konumu sorunsuz.")

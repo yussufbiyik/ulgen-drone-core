@@ -191,7 +191,7 @@ async def main(sim_instance=0):
     mission = FormasyonMission(drone, drone_controller, 
                                     takeoff_altitude=takeoff_altitude, 
                                     target_locations=sim_locations if isTesting else real_locations, 
-                                    user_selected_formation_type="cizgi", 
+                                    user_selected_formation_type="v", 
                                     formation_distance=10.0, 
                                     formation_duration=5000
                                 )

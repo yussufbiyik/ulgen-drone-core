@@ -82,7 +82,7 @@ class FormasyonMission(Mission):
         # Formasyonlar arası geçiş yap
         self.step_controller.add_step(formation_step("ok", formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
-        self.step_controller.add_step(formation_step("v", formation_distance))
+        self.step_controller.add_step(formation_step("cizgi", formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
@@ -94,7 +94,7 @@ class FormasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
+    isTesting = False
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
@@ -122,7 +122,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="cizgi", formation_distance=10.0, formation_duration=500)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_type="v", formation_distance=10.0, formation_duration=5000)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

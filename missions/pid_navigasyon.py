@@ -90,19 +90,19 @@ class UcusKanitMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_port = "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
     if not isTesting:
         xbee_controller = XBeeController(
-            port=xbee_port(),
+            port=xbee_port,
             message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
         )
     drone = Drone(
