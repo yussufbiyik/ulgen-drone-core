@@ -22,7 +22,7 @@ def check_connected(func):
     return wrapper
 
 class XBeeController:
-    def __init__(self, message_received_callback, port="/dev/ttyUSB0", baudrate=57600, max_queue_size=20):
+    def __init__(self, message_received_callback, port="/dev/ttyUSB0", baudrate=57600, max_queue_size=100000):
         self.port = port
         self.baudrate = baudrate
         self.device = XBeeDevice(port, baudrate)

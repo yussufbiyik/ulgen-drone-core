@@ -27,10 +27,10 @@ def format_broadcast_message(message):
     is_armed = 1 if message["armed"] else 0
     flight_mode = message["flight_mode"]
     battery = int(message["battery"])
-    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f},{message['gps_position']['altitude']:.4f}".replace('.', '')
+    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f}".replace('.', '')
     velocity = f"{message['velocity']['north']:.1f},{message['velocity']['east']:.1f},{message['velocity']['down']:.1f}".replace('.', '')
     mission = f"{message['mission']['current_step']['index']}{message['mission']['current_step']['status']}"
-    new_message = f"{is_armable}{is_armed}{flight_mode}{battery},{gps_string},{mission},{velocity}"
+    new_message = f"{gps_string},{mission}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
@@ -118,23 +118,18 @@ class Drone:
         """
         sender = message["sender"]
         message_data = message['data'].split(',')
-        if len(message_data) <= 4:
+        if len(message_data) < 3:
             logging.warning("Mesaj verisi eksik, geçiliyor.")
             return
         neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
-        is_armable = bool(int(message_data[0][0]))
-        is_armed = bool(int(message_data[0][1]))
-        flight_mode = int(message_data[0][2])
-        battery = int(message_data[0][3]+message_data[0][4])
         gps_position = {
-            "latitude": int(float(message_data[1]))/10**6,
-            "longitude": int(float(message_data[2]))/10**6,
-            "altitude": int(float(message_data[3]))/10**4
+            "latitude": int(float(message_data[0]))/10**6,
+            "longitude": int(float(message_data[1]))/10**6,
         }
         mission = {
             "current_step": {
-                "index": int(message_data[4][:-1]),
-                "status": int(message_data[4][-1]),
+                "index": int(message_data[2][:-1]),
+                "status": int(message_data[2][-1]),
             }
         }
         if not neighbor:
@@ -143,10 +138,6 @@ class Drone:
                 "sender": sender,
                 "timestamp": message["timestamp"],
                 "data": {
-                    "armable": is_armable,
-                    "armed": is_armed,
-                    "flight_mode": flight_mode,
-                    "battery": battery,
                     "gps_position": gps_position,
                     "mission": mission,
                 }
@@ -156,10 +147,6 @@ class Drone:
         else:
             logging.debug(f"{sender} zaten mevcut:, güncelleniyor ({(message['timestamp'] - time.time()):.2f}ms).")
             data = neighbor["data"]
-            data["armable"] = is_armable
-            data["armed"] = is_armed
-            data["flight_mode"] = flight_mode
-            data["battery"] = battery
             data["gps_position"] = gps_position
             data["mission"]["current_step"] = mission["current_step"]
 

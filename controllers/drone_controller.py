@@ -1,6 +1,7 @@
 import sys 
 import asyncio
 import math
+import random
 import functools
 import logging
 
@@ -250,7 +251,6 @@ class DroneController:
             if loop_count > 2:
                 logging.warning("Çok fazla döngüde kaldı, formasyon kabul edildi.")
                 await self.drone.broadcast_message(f"mts,1")
-
                 # Tüm komşu dronlar hedefi kabul etti mi kontrol et
                 did_others_complete = all(
                     neighbor["data"].get("target_status", True)
@@ -294,7 +294,7 @@ class DroneController:
                     logging.info(f"Dron {self.drone.xbee_id} çakışmada öncelikli, konumunu koruyor.")
 
             loop_count += 1
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(random.randrange(10,20)/10)
 
     async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
