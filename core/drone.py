@@ -67,7 +67,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 1.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -276,4 +276,4 @@ class Drone:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
             logging.debug(f"Güncel durum broadcast edildi: {message}")
-            await asyncio.sleep(1.5)  # Her 1.5 saniyede bir güncel durumu broadcast et
+            await asyncio.sleep(random.randrange(10,20)/10)  # Her 1-2 saniyede bir güncel durumu broadcast et

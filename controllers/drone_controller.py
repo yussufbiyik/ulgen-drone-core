@@ -303,7 +303,7 @@ class DroneController:
         await self.resolve_position_conflicts(position_assignments, target_location)
         self.drone.formation_position = target_location
         self.drone.offboard_status["target_position"] = target_location
-        self.drone.offboard_status["altitude_to_keep"] = gps_position["altitude"]
+        self.drone.offboard_status["altitude_to_keep"] = self.drone.pre_takeoff_location["altitude"] + await self.drone.mavsdk_controller.mavsdk.action.get_takeoff_altitude()
 
     async def goto_formation_location(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
@@ -314,7 +314,7 @@ class DroneController:
         await self.drone.mavsdk_controller.mavsdk.action.goto_location(
             target_location["latitude"],
             target_location["longitude"],
-            gps_position["altitude"],  # GPS yüksekliğine göre ayarlanır
+            self.drone.pre_takeoff_location["altitude"] + await self.drone.mavsdk_controller.mavsdk.action.get_takeoff_altitude(),  # GPS yüksekliğine göre ayarlanır
             0,  # yaw
         )
         await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
