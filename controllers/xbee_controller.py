@@ -31,7 +31,6 @@ class XBeeController:
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
-        # self.configure_xbee_api_mode()
         self.queue_thread = threading.Thread(target=self.queue_processor, daemon=True)
         if self.message_received_callback:
             self.queue_thread.start()
@@ -89,41 +88,6 @@ class XBeeController:
                 self.recent_messages.put_nowait(message_full)
         except Exception as e:
             logging.error(f"Mesaj işlenirken hata oluştu: {e}")
-    
-    def configure_xbee_api_mode(self):
-        """
-        XBee cihazını API moduna geçirir.
-        """
-        try:
-            logging.info("XBee cihazı API moduna geçiriliyor...")
-            # Serial bağlantı kur
-            ser = serial.Serial(self.port, self.baudrate, timeout=2)
-            time.sleep(1)  # Bağlantının stabilleşmesi için bekle
-            # Command moduna geç
-            ser.write(b'+++')
-            time.sleep(2)
-            response = ser.read(ser.in_waiting)
-            logging.info(f"Command mode response: {response}")
-            # API mode 1'e geç (AP=1)
-            ser.write(b'ATAP1\r')
-            time.sleep(0.5)
-            response = ser.read(ser.in_waiting)
-            logging.info(f"API mode response: {response}")
-            # Ayarları kaydet
-            ser.write(b'ATWR\r')
-            time.sleep(0.5)
-            response = ser.read(ser.in_waiting)
-            logging.info(f"Write response: {response}")
-            # Command modundan çık
-            ser.write(b'ATCN\r')
-            time.sleep(0.5)
-            ser.close()
-            logging.info("XBee başarıyla API moduna geçirildi.")
-            return True
-            
-        except Exception as e:
-            logging.error(f"XBee API moduna geçirilirken hata: {e}")
-            return False
 
     def listen(self):
         """
