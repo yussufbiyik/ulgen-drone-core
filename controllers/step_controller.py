@@ -92,11 +92,13 @@ class StepController:
                             break
                         logging.debug(f"Komşu drone {len(drones_to_wait)} tane drone henüz {step_index}. adımı tamamlamadı, bekleniyor...")
                         await asyncio.sleep(0.1)
+                # await self.drone.mavsdk_controller.play_tune("success")
             except Exception as e:
                 logging.exception(f"Adım {step.name} sırasında hata oluştu: {e}")
                 logging.info("Acil iniş yapılıyor!")
                 self.drone.mission_info["current_step"]["status"] = 2 # Görevi hatalı olarak işaretle
                 step.is_completed = False
+                # await self.drone.mavsdk_controller.play_tune("fail")
                 await self.drone.mavsdk_controller.mavsdk.action.land()
         logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
         self.is_all_done = True

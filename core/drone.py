@@ -263,4 +263,4 @@ class Drone:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
             logging.debug(f"Güncel durum broadcast edildi: {message}")
-            await asyncio.sleep(random.randrange(10,20)/10)  # Her 1-2 saniyede bir güncel durumu broadcast et
+            await asyncio.sleep(random.randrange(15,20)/10)  # Her 1.5-2 saniyede bir güncel durumu broadcast et

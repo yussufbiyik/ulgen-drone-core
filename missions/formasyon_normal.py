@@ -95,12 +95,12 @@ class FormasyonMission(Mission):
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
     isTesting = False
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # "serial:///dev/ttyACM0:57600"
+    mavsdk_port = lambda: "serial:///dev/ttyACM0:57600" # f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else f"/dev/ttyUSB{sim_instance}"
+    xbee_port = lambda: "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız

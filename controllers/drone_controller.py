@@ -278,7 +278,7 @@ class DroneController:
                 # Çakışma varsa deterministik olarak en küçük ID'li drona öncelik ver
                 conflicting_positions.sort(key=lambda n: int(str(n["sender"]), 16))
                 lowest_id = conflicting_positions[0]["sender"]
-
+                
                 if int(str(self.drone.xbee_id), 16) > int(str(lowest_id), 16):
                     # Daha büyük ID'ye sahip olan dron konumunu değiştirsin
                     swap_position = position_assignments[lowest_id]
@@ -294,7 +294,7 @@ class DroneController:
                     logging.info(f"Dron {self.drone.xbee_id} çakışmada öncelikli, konumunu koruyor.")
 
             loop_count += 1
-            await asyncio.sleep(random.randrange(10,20)/10)
+            await asyncio.sleep(random.randrange(15,20)/10)
 
     async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
