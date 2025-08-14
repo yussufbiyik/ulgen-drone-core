@@ -94,6 +94,11 @@ class Drone:
             Kp=0.45, Ki=0.005, Kd=0.1,
             max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold
         )
+        # Dikey eksen için PID kontrolcüsü
+        self.pid_d = PID(
+            Kp=0.45, Ki=0.005, Kd=0.1,
+            max_output=0.5, min_output=-0.5, error_threshold=self.waypoint_threshold
+        )
         self.apf = APF()
         
         self.neighbors = []

@@ -37,15 +37,16 @@ class OffboardController:
         return vx, vy
 
     # PID ile Navigasyon
-    async def pid_controller(self, d_north, d_east, distance, angle):
+    async def pid_controller(self, d_north, d_east, down_distance, distance, angle):
         """
         PID kontrolü: hedef pozisyona yönelmek için hız vektörü üretir.
         """
         dt = 0.1  # Sabit güncelleme süresi
         speed = self.drone.pid_ne.compute(distance, dt)
+        down_speed = self.drone.pid_d.compute(down_distance, dt)
         vx = speed * math.cos(angle)
         vy = speed * math.sin(angle)
-        return vx, vy
+        return vx, vy, down_speed
     # Standart Mod ile Navigasyon
     async def smooth_navigate(self, d_north, d_east, distance, angle, max_speed, navigation_duration = None):
         """
@@ -108,6 +109,7 @@ class OffboardController:
                 continue
             current_data = await self.drone.mavsdk_controller.get_general_info()
             current_position = current_data["gps_position"]
+            down_distance = current_position["altitude"] - self.drone.offboard_status["altitude_to_keep"]
             d_north, d_east, distance, angle = get_distances_and_angles(current_position, target_pos)
 
             # Hedef konum değişmişse
@@ -135,8 +137,8 @@ class OffboardController:
                 )
             else:
                 # PID ve APF ile hızları hesapla
-                vx, vy = await self.pid_controller(
-                    d_north, d_east, distance, angle
+                vx, vy, down_speed = await self.pid_controller(
+                    d_north, d_east, down_distance, distance, angle
                 )
                 # logging.info(f"PID Hız: vx={vx}, vy={vy}")
             apf_vx, apf_vy = await self.apf_controller()
@@ -153,7 +155,7 @@ class OffboardController:
 
             try:
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=0.0, yaw_deg=yaw)
+                    VelocityNedYaw(north_m_s=vx, east_m_s=vy, down_m_s=min(down_speed, 0.5), yaw_deg=yaw)
                 )
             except OffboardError as e:
                 logging.error(f"Hız vektörü ayarlanamadı: {e}")
