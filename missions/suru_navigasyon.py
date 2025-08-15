@@ -117,13 +117,13 @@ class FormasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
+    isTesting = False
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None
+    xbee_port = lambda: "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
@@ -160,18 +160,18 @@ async def main(sim_instance=0):
     ]
     real_locations = [
         {
-            "latitude": 40.326029,
-            "longitude": 36.473833,
+            "latitude": 40.325736,
+            "longitude": 36.473413,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325512,
-            "longitude": 36.473881,
+            "latitude": 40.325749,
+            "longitude": 36.473801,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325561,
-            "longitude": 36.473402,
+            "latitude": 40.325495,
+            "longitude": 36.473798,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]

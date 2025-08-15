@@ -67,7 +67,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 3.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -98,7 +98,7 @@ class Drone:
         )
         # Dikey eksen için PID kontrolcüsü
         self.pid_d = PID(
-            Kp=0.45, Ki=0.005, Kd=0.1,
+            Kp=0.20, Ki=0.005, Kd=0.1,
             max_output=0.5, min_output=-0.5, error_threshold=self.waypoint_threshold
         )
         self.apf = APF()
@@ -205,24 +205,87 @@ class Drone:
             self.process_drone_status_message(recieved_message)
         elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
+            self.send_private_message(sender, "ACK")
+        elif message_raw[0] == "ACK":
+            sender_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == sender), None)
+            if sender_in_neighbor_list:
+                logging.info(f"{sender} ID'li drondan, ACK mesajı alındı ve güncellendi.")
+                sender_in_neighbor_list["data"]["acknowledged"] = True
 
-    async def broadcast_message(self, message):
+    def broadcast_message(self, message):
         """
         Drondan bir mesaj broadcast eder.
 
         :param message: Broadcast edilecek mesaj
         """
         if self.isTesting:
-            test_message = json.dumps({
+            message = json.dumps({
                 "sender": self.fake_id,
                 "data": message,
             })
             self.socket.sendto(
-                test_message.encode('utf-8'),
+                message.encode('utf-8'),
                 (SERVER_IP, SERVER_PORT)
             )
         else:
             self.xbee_controller.send_broadcast_message(message)
+
+    def send_private_message(self, receiver, message):
+        """
+        Drondan bir mesaj özel olarak gönderir.
+
+        :param receiver: Mesajın gönderileceği alıcı
+        :param message: Gönderilecek mesaj
+        """
+        if self.isTesting:
+            message = json.dumps({
+                "sender": self.fake_id,
+                "target": receiver,
+                "data": message,
+            })
+            self.socket.sendto(
+                message.encode('utf-8'),
+                (SERVER_IP, SERVER_PORT)
+            )
+        else:
+            self.xbee_controller.send_private_message(receiver, message)
+
+    async def send_message_with_ack(self, message):
+        """
+        Drondan bir mesajı broadcast eder, teslim alındığının onayını bekler (ACK), 
+        teslim almamış olan dronlara da mesajı tekrar gönderir.
+
+        :param receiver: Mesajın gönderileceği alıcı
+        :param message: Gönderilecek mesaj
+        """
+        if self.isTesting:
+            message = json.dumps({
+                "sender": self.fake_id,
+                "data": message,
+            })
+            self.socket.sendto(
+                message.encode('utf-8'),
+                (SERVER_IP, SERVER_PORT)
+            )
+        else:
+            self.xbee_controller.send_broadcast_message(message)
+        while True:
+            not_acknowledged_drones = [
+                neighbor for neighbor in self.neighbors
+                if not neighbor["data"].get("acknowledged", False)
+            ]
+            # Bu kontrol tamamlanınca ACK işlemleri için değer false verilir ki,
+            # sonraki ACK kontrolünde tüm değerler True olup hatalı sonuç vermesin
+            if len(not_acknowledged_drones) == 0:
+                logging.info("Tüm dronlar mesajı aldı.")
+                for drone in not_acknowledged_drones:
+                    drone_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == drone["sender"]), None)
+                    drone_in_neighbor_list["data"]["acknowledged"] = False
+                return
+            else:
+                for drone in not_acknowledged_drones:
+                    self.send_private_message(drone["sender"], message)
+            await asyncio.sleep(1.5 + random.uniform(0, 0.5))
 
     async def broadcast_drone_status(self):
         """
@@ -270,4 +333,4 @@ class Drone:
                 logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
             logging.debug(f"Güncel durum broadcast edildi: {message}")
-            await asyncio.sleep(random.randrange(15,20)/10)  # Her 1.5-2 saniyede bir güncel durumu broadcast et
+            await asyncio.sleep(1.5 + random.uniform(0, 0.5))  # Her 1.5-2 saniyede bir güncel durumu broadcast et
