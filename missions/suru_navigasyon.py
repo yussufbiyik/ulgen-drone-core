@@ -91,13 +91,6 @@ class FormasyonMission(Mission):
                 self.drone_controller.enable_offboard_controller_check)
             )
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
-            # self.step_controller.add_step(
-            #     Step(
-            #         "Açıyı Düzelt",
-            #         lambda loc=target_location: self.drone_controller.rotate_formation(loc),
-            #         lambda loc=target_location: self.drone_controller.rotate_formation_check(loc)
-            #     )
-            # )
             step_name = f"{i+1} Numaralı Hedefe İlerle"
             self.step_controller.add_step(
                 Step(
@@ -188,11 +181,11 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, 
-                                    takeoff_altitude=takeoff_altitude, 
-                                    target_locations=sim_locations if isTesting else real_locations, 
-                                    user_selected_formation_type="cizgi", 
-                                    formation_distance=10.0, 
+    mission = FormasyonMission(drone, drone_controller,
+                                    takeoff_altitude=takeoff_altitude,
+                                    target_locations=sim_locations if isTesting else real_locations,
+                                    user_selected_formation_type="v",
+                                    formation_distance=10.0,
                                     formation_duration=5000
                                 )
     await mission.run()

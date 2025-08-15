@@ -154,7 +154,7 @@ def rotate_position(d_n, d_e, angle):
     theta = math.radians(angle)
     xr = d_n * math.cos(theta) - d_e * math.sin(theta)
     yr = d_n * math.sin(theta) + d_e * math.cos(theta)
-    return {"north": xr, "east": yr}
+    return xr, yr
 
 def wrap_number_in_range(number, range):
     """

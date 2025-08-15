@@ -3,7 +3,6 @@ import json
 import threading
 import time
 import logging
-import serial
 import functools
 from queue import Queue, Full
 

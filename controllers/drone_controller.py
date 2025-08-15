@@ -7,7 +7,7 @@ import logging
 
 from core.drone import Drone
 
-from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position, latlon_to_ned, ned_to_latlon
+from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position, latlon_to_ned, ned_to_latlon, rotate_position
 
 from mavsdk.action import OrbitYawBehavior
 
@@ -381,56 +381,5 @@ class DroneController:
         if (distance_to_target <= self.drone.waypoint_threshold):
             self.drone.offboard_status["target_position"] = None
             logging.info(f"Drone hedef konuma ulaştı, anlık konum: {gps_position}")
-            return True
-        return False
-
-
-    async def rotate_formation(self, target_position):
-        general_info = await self.drone.mavsdk_controller.get_general_info()
-        gps_position = general_info["gps_position"]
-        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
-        center_radius = distance_meters(gps_position, center_position)
-
-        # Initial angle from center to this drone
-        self.start_angle = normalize_angle_deg(math.degrees(math.atan2(
-            gps_position["longitude"] - center_position["longitude"],
-            gps_position["latitude"] - center_position["latitude"]
-        )))
-
-        # Target angle from center to target_position
-        self.target_angle = normalize_angle_deg(math.degrees(math.atan2(
-            target_position["longitude"] - center_position["longitude"],
-            target_position["latitude"] - center_position["latitude"]
-        )))
-
-        # Required rotation (shortest path)
-        self.required_rotation = (self.target_angle - self.start_angle) % 360
-
-        self.drone.offboard_status["is_active"] = False
-        await self.drone.mavsdk_controller.mavsdk.action.do_orbit(
-            radius_m=center_radius,
-            velocity_ms=self.drone.speed_limit,
-            yaw_behavior=OrbitYawBehavior.HOLD_FRONT_TANGENT_TO_CIRCLE,
-            latitude_deg=center_position["latitude"],
-            longitude_deg=center_position["longitude"],
-            absolute_altitude_m=gps_position["altitude"]
-        )
-
-    async def rotate_formation_check(self, target_position):
-        general_info = await self.drone.mavsdk_controller.get_general_info()
-        gps_position = general_info["gps_position"]
-        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
-
-        current_angle = normalize_angle_deg(math.degrees(math.atan2(
-            gps_position["longitude"] - center_position["longitude"],
-            gps_position["latitude"] - center_position["latitude"]
-        )))
-        
-        angle_diff = (current_angle - self.start_angle) % 360
-
-        # print(f"Start: {self.start_angle}, Current: {current_angle}, Target: {self.target_angle}, Diff: {angle_diff}")
-
-        if angle_diff >= self.required_rotation:
-            await self.drone.mavsdk_controller.mavsdk.action.hold()
             return True
         return False
