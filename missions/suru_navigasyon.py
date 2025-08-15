@@ -85,6 +85,11 @@ class FormasyonMission(Mission):
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyon ile konuma ilerle
+        self.step_controller.add_step(
+            Step("Offboard Moda Geç",
+                self.drone_controller.enable_offboard_controller, 
+                self.drone_controller.enable_offboard_controller_check)
+            )
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             # self.step_controller.add_step(
             #     Step(
@@ -93,11 +98,6 @@ class FormasyonMission(Mission):
             #         lambda loc=target_location: self.drone_controller.rotate_formation_check(loc)
             #     )
             # )
-            self.step_controller.add_step(
-                Step("Offboard Moda Geç",
-                    self.drone_controller.enable_offboard_controller, 
-                    self.drone_controller.enable_offboard_controller_check)
-                )
             step_name = f"{i+1} Numaralı Hedefe İlerle"
             self.step_controller.add_step(
                 Step(
@@ -130,7 +130,7 @@ async def main(sim_instance=0):
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: "/dev/ttyUSB0"
+    xbee_port = lambda: None
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
@@ -191,7 +191,7 @@ async def main(sim_instance=0):
     mission = FormasyonMission(drone, drone_controller, 
                                     takeoff_altitude=takeoff_altitude, 
                                     target_locations=sim_locations if isTesting else real_locations, 
-                                    user_selected_formation_type="v", 
+                                    user_selected_formation_type="cizgi", 
                                     formation_distance=10.0, 
                                     formation_duration=5000
                                 )

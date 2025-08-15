@@ -2,9 +2,9 @@ import math
 import logging
 import asyncio
 
-from mavsdk.offboard import OffboardError, VelocityNedYaw
+from mavsdk.offboard import OffboardError, VelocityNedYaw, VelocityBodyYawspeed
 
-from utils.formation_utilities import latlon_to_ned, get_distances_and_angles
+from utils.formation_utilities import latlon_to_ned, get_distances_and_angles, wrap_number_in_range
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
@@ -117,14 +117,26 @@ class OffboardController:
                 self.time_elapsed_since_last_target = 0.0
                 self.prev_position = target_pos
                 self.prev_ratio = 0.0
-                self.initial_distance_to_target = distance
-                self.initial_navigation_duration = distance / self.drone.speed_limit
-                # Yaw değerini hedefe doğru ayarla
-                yaw = math.degrees(math.atan2(
-                    target_pos["longitude"] - current_position["longitude"],
-                    target_pos["latitude"] - current_position["latitude"]
-                ))
                 self.drone.pid_ne.reset()
+                self.drone.pid_d.reset()
+                # Hedefe doğru bir yayı izler gibi yumuşak dönüş yap
+                while True:
+                    current_data = await self.drone.mavsdk_controller.get_general_info()
+                    current_position = current_data["gps_position"]
+                    d_north, d_east, distance, angle = get_distances_and_angles(current_position, self.drone.formation["weight_center"])
+                    current_yaw_deg = current_data["attitude"]["yaw"]
+                    target_yaw_deg = math.degrees(angle)
+                    distance = math.degrees(distance)
+                    yaw_error = wrap_number_in_range((target_yaw_deg - current_yaw_deg), [-180, 180])
+                    logging.info(f"Hedefe doğru yönelme: Hedef Yaw: {target_yaw_deg}, Mevcut Yaw: {current_yaw_deg}, Hata: {yaw_error}")
+                    yaw_rate = yaw_error * 0.5
+                    if(abs(yaw_error) < 3):
+                        logging.info("Hedefe doğru yönelme tamamlandı.")
+                        break
+                    await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_body(
+                        VelocityBodyYawspeed(1.0, 0.0, 0.0, yaw_rate)
+                    )
+                    await asyncio.sleep(0.1)
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
                     VelocityNedYaw(0.0, 0.0, 0.0, yaw)
                 )

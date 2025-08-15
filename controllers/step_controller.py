@@ -100,6 +100,7 @@ class StepController:
                 step.is_completed = False
                 # await self.drone.mavsdk_controller.play_tune("fail")
                 await self.drone.mavsdk_controller.mavsdk.action.land()
+                break
         logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
         self.is_all_done = True
         return self.is_all_done

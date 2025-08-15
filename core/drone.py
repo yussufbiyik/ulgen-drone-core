@@ -67,7 +67,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 1.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -78,11 +78,13 @@ class Drone:
             "is_on_target": False,
         }
         # Formasyon için gerekli değişkenler
-        self.formation_position = None
-        self.formation_weight_center = None
-        self.formation_type = None
-        self.formation_distance = None
-        self.neighbor_formation_positions = []
+        self.formation = {
+            "position": None,
+            "weight_center": None,
+            "type": None,
+            "distance": None,
+            "neighbor_positions": []
+        }
         self.mission_info = {
             "current_step": {
                 "index": 0,
