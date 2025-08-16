@@ -373,7 +373,7 @@ class DroneController:
             await self.drone.mavsdk_controller.mavsdk.action.goto_location(
                 drone_formation_position_at_target["latitude"],
                 drone_formation_position_at_target["longitude"],
-                drone_formation_position_at_target["altitude"] + self.drone.pre_takeoff_location["altitude"],  # GPS yüksekliğine göre ayarlanır
+                drone_formation_position_at_target["altitude"],  # GPS yüksekliğine göre ayarlanır
                 0,  # yaw
             )
             await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
