@@ -39,6 +39,7 @@ class UcusKanitMission(Mission):
         # Görev modül olarak çağırıldığında
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         hold_time = self.parameters.get("hold_time", 100.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         logging.info("KTR Video görevi başlatılıyor...")
         # Arm et

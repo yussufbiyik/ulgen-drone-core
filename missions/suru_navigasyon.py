@@ -53,6 +53,7 @@ class FormasyonMission(Mission):
         formation_distance = self.parameters.get("formation_distance", 10.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
 
         logging.info("Formasyon navigasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle

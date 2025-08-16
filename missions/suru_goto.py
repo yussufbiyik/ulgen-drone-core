@@ -53,6 +53,7 @@ class FormasyonMission(Mission):
         formation_distance = self.parameters.get("formation_distance", 10.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
 
         logging.info("Formasyon navigasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
@@ -85,11 +86,6 @@ class FormasyonMission(Mission):
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyon ile konuma ilerle
-        self.step_controller.add_step(
-            Step("Offboard Moda Geç",
-                self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
-            )
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"
             self.step_controller.add_step(

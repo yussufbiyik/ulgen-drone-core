@@ -26,6 +26,7 @@ class UcusKanitMission(Mission):
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Takeoff yap
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),
