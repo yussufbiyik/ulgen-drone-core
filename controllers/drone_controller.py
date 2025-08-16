@@ -238,7 +238,7 @@ class DroneController:
             # Fazla döngüden kaçınmak için güvenlik kontrolü
             if loop_count > 2:
                 logging.warning("Çok fazla döngüde kaldı, formasyon kabul edildi.")
-                self.drone.broadcast_message(f"mts,1")
+                await self.drone.send_message_with_ack("mts,1")
                 # Tüm komşu dronlar hedefi kabul etti mi kontrol et
                 did_others_complete = all(
                     neighbor["data"].get("target_status", True)
@@ -262,6 +262,7 @@ class DroneController:
             # Çakışma yoksa devam et
             if (len(neighbor_target_positions) >= 2 and not conflicting_positions) or len(conflicting_positions) == 0:
                 logging.info("Formasyon konumu sorunsuz.")
+                # return
             else:
                 # Çakışma varsa deterministik olarak önce alacağı yol en kısa olan dronaa,
                 # mesafeler eşit ise en küçük ID'li drona öncelik ver
@@ -305,7 +306,7 @@ class DroneController:
         self.drone.formation["position"] = target_location
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
         self.drone.offboard_status["target_position"] = target_location
-        self.drone.offboard_status["altitude_to_keep"] = self.drone.pre_takeoff_location["altitude"] + await self.drone.mavsdk_controller.mavsdk.action.get_takeoff_altitude()
+        self.drone.offboard_status["altitude_to_keep"] = self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target
 
     async def goto_formation_location(self, formation_type, formation_distance):
         general_info = await self.drone.mavsdk_controller.get_general_info()
@@ -313,12 +314,11 @@ class DroneController:
         target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance, gps_position)
         self.drone.formation["position"] = target_location
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
-        # Önce diğer dronlarla arayı biraz açacak şekilde kenara çekil
         # Ardından hedef konuma ilerle
         await self.drone.mavsdk_controller.mavsdk.action.goto_location(
             target_location["latitude"],
             target_location["longitude"],
-            self.drone.pre_takeoff_location["altitude"] + await self.drone.mavsdk_controller.mavsdk.action.get_takeoff_altitude(),  # GPS yüksekliğine göre ayarlanır
+            self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target,
             0,  # yaw
         )
         await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
