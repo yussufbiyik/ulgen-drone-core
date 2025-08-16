@@ -99,7 +99,7 @@ class Drone:
         )
         # Dikey eksen için PID kontrolcüsü
         self.pid_d = PID(
-            Kp=0.20, Ki=0.005, Kd=0.1,
+            Kp=0.20, Ki=0.0005, Kd=0.05,
             max_output=0.5, min_output=-0.5, error_threshold=self.waypoint_threshold
         )
         self.apf = APF()

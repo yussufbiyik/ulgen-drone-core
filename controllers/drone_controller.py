@@ -11,6 +11,8 @@ from utils.formation_utilities import distance_meters, calculate_formation_weigh
 
 from mavsdk.action import OrbitYawBehavior
 
+from mavsdk.offboard import OffboardError, VelocityNedYaw, VelocityBodyYawspeed
+
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 def check_neighbors(func):
@@ -129,6 +131,16 @@ class DroneController:
     async def enable_offboard_controller(self):
         logging.info("OffboardController aktifleştiriliyor...")
         self.drone.offboard_status["is_active"] = True
+        if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active():
+            try:
+                yaw = await self.drone.mavsdk_controller.get_yaw()
+                await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
+                    VelocityNedYaw(0.0, 0.0, 0.0, yaw)
+                )
+                await self.drone.mavsdk_controller.mavsdk.offboard.start()
+                logging.debug("Offboard modu başlatıldı.")
+            except OffboardError as e:
+                logging.warning(f"Offboard moduna geçiş başarısız: {e}")
         asyncio.create_task(
             self.drone.offboard_controller.background_offboard_controller()
         )

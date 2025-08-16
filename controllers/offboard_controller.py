@@ -3,6 +3,7 @@ import logging
 import asyncio
 
 from mavsdk.offboard import OffboardError, VelocityNedYaw, VelocityBodyYawspeed
+from mavsdk.telemetry import FlightMode
 
 from utils.formation_utilities import latlon_to_ned, get_distances_and_angles, wrap_number_in_range
 
@@ -81,26 +82,11 @@ class OffboardController:
     async def background_offboard_controller(self):
         while True:
             current_flight_mode = await self.drone.mavsdk_controller.mavsdk.telemetry.flight_mode().__anext__()
-            if not self.drone.offboard_status["is_active"] or current_flight_mode != "OFFBOARD":
+            if not self.drone.offboard_status["is_active"] or current_flight_mode != FlightMode.OFFBOARD:
                 logging.info("OffboardController kapalı, kontrol döngüsü atlanıyor.")
                 await asyncio.sleep(0.1)
                 continue
-
-            if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active():
-                try:
-                    yaw = await self.drone.mavsdk_controller.get_yaw()
-                    await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
-                        VelocityNedYaw(0.0, 0.0, 0.0, yaw)
-                    )
-                    await self.drone.mavsdk_controller.mavsdk.offboard.start()
-                    logging.debug("Offboard modu başlatıldı.")
-                except OffboardError as e:
-                    logging.error(f"Offboard moduna geçiş başarısız: {e}")
-                    await asyncio.sleep(0.1)
-                    continue
-
             target_pos = self.drone.offboard_status.get("target_position")
-
             if target_pos is None:
                 logging.debug("Hedef konum ayarlanmamış. Hover modu aktif.")
                 await self.drone.mavsdk_controller.mavsdk.offboard.set_velocity_ned(
