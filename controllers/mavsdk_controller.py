@@ -12,6 +12,8 @@ success_tune = [
     SongElement.DURATION_8, SongElement.NOTE_C,
     SongElement.DURATION_8, SongElement.NOTE_E,
     SongElement.DURATION_8, SongElement.NOTE_G,
+    SongElement.DURATION_8, SongElement.NOTE_C, SongElement.OCTAVE_UP,
+    SongElement.DURATION_4, SongElement.NOTE_G, SongElement.OCTAVE_UP,
     SongElement.DURATION_4, SongElement.NOTE_C, SongElement.OCTAVE_UP
 ]
 
@@ -319,7 +321,7 @@ class MAVSDKController:
             tune = fail_tune
 
         if tune is not None:
-            await self.mavsdk.tune.play_tune(TuneDescription(tune=tune, tempo=140))
+            await self.mavsdk.tune.play_tune(TuneDescription(song_elements=tune, tempo=90))
         else:
             logging.error(f"Geçersiz melodi adı: {tune_name}")
 
