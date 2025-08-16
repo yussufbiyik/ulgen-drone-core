@@ -334,10 +334,10 @@ class DroneController:
         return False
     
     # Formasyon ile navigasyon ile alakalı fonksiyonlar
-    async def goto_location_with_formation(self, target_location):
+    async def goto_location_with_formation(self, target_location, isOffboard=True):
         """
-        Drone'u belirli bir konuma götüren adım fonksiyonu.
-        
+        Drone'u sürüyü de dikkate alarak belirli bir konuma götüren adım fonksiyonu.
+
         :param target_location: Hedef konum (latitude, longitude, altitude)
         """
         logging.info(f"Drone {target_location['latitude']}, {target_location['longitude']}, {target_location['altitude']} konumuna gidiyor...")
@@ -357,6 +357,15 @@ class DroneController:
             "altitude": gps_position["altitude"]  # GPS yüksekliğine göre ayarlanır
         }
         self.drone.formation["position"] = drone_formation_position_at_target
+        if not isOffboard:
+            await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+                drone_formation_position_at_target["latitude"],
+                drone_formation_position_at_target["longitude"],
+                drone_formation_position_at_target["altitude"] + self.drone.pre_takeoff_location["altitude"],  # GPS yüksekliğine göre ayarlanır
+                0,  # yaw
+            )
+            await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
+            return
         self.drone.offboard_status["target_position"] = drone_formation_position_at_target
         self.drone.offboard_status["altitude_to_keep"] = drone_formation_position_at_target["altitude"]
 

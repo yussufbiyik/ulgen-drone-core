@@ -6,7 +6,7 @@ import logging
 import functools
 from queue import Queue, Full
 
-from digi.xbee.devices import XBeeDevice
+from digi.xbee.devices import XBeeDevice, XBeeMessage, RemoteXBeeDevice, XBee64BitAddress
 from digi.xbee.exception import XBeeException, TransmitException, TimeoutException, InvalidOperatingModeException
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
@@ -27,6 +27,7 @@ class XBeeController:
         self.device = XBeeDevice(port, baudrate)
         self.device.open()
         self.address = int.from_bytes(self.device.get_64bit_addr().address, "big")
+        self.network = self.device.get_network()
         self.message_received_callback = message_received_callback
         self.recent_messages = Queue(maxsize=max_queue_size)
         self.queue_stop_event = threading.Event()
@@ -62,7 +63,7 @@ class XBeeController:
             self.queue_thread.start()
             logging.info("Mesaj kuyruğu işleme thread'i yeniden başlatıldı.")
     
-    def default_message_received_callback(self, message):
+    def default_message_received_callback(self, message: XBeeMessage):
         """
         Xbee'den gelen mesajları işleyen callback fonksiyonu.
         """
@@ -142,17 +143,20 @@ class XBeeController:
             return False
     
     @check_connected
-    def send_private_message(self, receiver, data):
+    def send_private_message(self, receiver: int, data):
         """
         Xbee üzerinden bir alıcıya veri gönderir.
         """
-        message = self.construct_message(data)
+        # message = self.construct_message(data)
         try:
-            self.device.send_data(receiver, message)
+            receiver = receiver.to_bytes(8, "big")
+            address = XBee64BitAddress(receiver)
+            device = self.network.get_device_by_64(address)
+            self.device.send_data(device, data)
             logging.debug(f"Mesaj gönderildi:\n Mesaj: {data}\nAlıcı: {receiver}")
             return True
         except Exception as e:
-            logging.error(f"Mesaj gönderilemedi: {e}")
+            logging.exception(f"Mesaj gönderilemedi: {e}")
             return False
     
     def close(self):

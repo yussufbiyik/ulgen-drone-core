@@ -80,8 +80,9 @@ class OffboardController:
 
     async def background_offboard_controller(self):
         while True:
-            if not self.drone.offboard_status["is_active"]:
-                logging.debug("OffboardController kapalı, kontrol döngüsü atlanıyor.")
+            current_flight_mode = await self.drone.mavsdk_controller.mavsdk.telemetry.flight_mode().__anext__()
+            if not self.drone.offboard_status["is_active"] or current_flight_mode != "OFFBOARD":
+                logging.info("OffboardController kapalı, kontrol döngüsü atlanıyor.")
                 await asyncio.sleep(0.1)
                 continue
 
