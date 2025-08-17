@@ -11,36 +11,33 @@ from controllers.xbee_controller import XBeeController
 
 from core.drone import Drone
 
-class UcusKanitMission(Mission):
+class ArayuzMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("Tune test", drone, **kwargs)
+        super().__init__("Arayüz Testi", drone, **kwargs)
         self.drone_controller = drone_controller
 
     async def run(self):
-        # Görev modül olarak çağırıldığında
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("Tune test görevi başlatılıyor...")
-        logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
         self.step_controller.add_step(
             Step(
-                "Tune Test Adımı",
-                lambda: print("test"),
-                lambda: True  # Bu adımın tamamlandığını kontrol etmek için True döndür
+                "Sonsuza kadar afk bekle",
+                lambda: asyncio.sleep(1000000),  # Sonsuza kadar bekle
+                lambda: False  # Bu adımın tamamlandığını kontrol etmek için True döndür
             )
         )
+        logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
         await super().run()
 
 # Simülasyon ortamında hangi dronun kullanılacağını belirlemek için sim_instance değişkeni kullanılır,
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: "serial:///dev/ttyACM0:57600" # f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_port = lambda: "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
@@ -61,7 +58,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     # await drone_controller.wait_for_proper_data()
-    mission = UcusKanitMission(drone, drone_controller)
+    mission = ArayuzMission(drone, drone_controller)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

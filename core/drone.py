@@ -43,7 +43,6 @@ SERVER_PORT = 5005
 class Drone:
     def __init__(self, xbee_controller: XBeeController, mavsdk_controller: MAVSDKController, isTesting=False):
         self.isTesting = isTesting
-
         # Test modunda soket üzerinden iletişim kurmak için
         self.socket = None
         self.fake_id = random.randint(10000, 99999) if isTesting else None
@@ -54,9 +53,8 @@ class Drone:
         self.mavsdk_controller = mavsdk_controller
         
         if not self.isTesting:
-            self.xbee_controller.set_message_received_callback(self.handle_message_received)
-            self.xbee_controller.listen()
-            logging.info("XBee iletişimi başlatıldı.")
+            self.xbee_controller.subscribe(self.handle_message_received)
+            logging.info("XBee mesajlarına abone olundu.")
         else:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             threading.Thread(target=self.listen_to_socket).start()
@@ -331,7 +329,7 @@ class Drone:
                         continue
                     self.xbee_controller.send_broadcast_message(message)
             except Exception as e:
-                logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
+                logging.exception(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
             logging.debug(f"Güncel durum broadcast edildi: {message}")
             await asyncio.sleep(1.5 + random.uniform(0, 0.5))  # Her 1.5-2 saniyede bir güncel durumu broadcast et

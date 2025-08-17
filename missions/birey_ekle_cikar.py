@@ -1,5 +1,4 @@
 import sys
-import time
 import logging
 import asyncio
 
@@ -12,52 +11,24 @@ from controllers.xbee_controller import XBeeController
 
 from core.drone import Drone
 
-time_waited = 0
-async def sleep_for(milliseconds):
-    """
-    Asenkron olarak belirtilen milisaniye kadar bekler.
-    """
-    global time_waited
-    time_waited = time.time()
-async def sleep_for_check(milliseconds):
-    """
-    Asenkron olarak belirtilen milisaniye kadar beklenip beklenilmediğini kontrol eder.
-    """
-    global time_waited
-    current_time = time.time()
-    if current_time - time_waited >= milliseconds / 1000:
-        return True
-    else:
-        return False
-    
-class UcusKanitMission(Mission):
+class BireyEkleCikarMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("KTR Video", drone, **kwargs)
+        super().__init__("Birey Ekle Çıkar", drone, **kwargs)
         self.drone_controller = drone_controller
 
     async def run(self):
-        # Görev modül olarak çağırıldığında
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
-        hold_time = self.parameters.get("hold_time", 100.0)
-        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("KTR Video görevi başlatılıyor...")
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Takeoff yap
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
-            )
-        # OffboardController'ı aktifleştir
-        self.step_controller.add_step(
-            Step("Offboard Moda Geç",
-                self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
             )
         # Hedef noktalara ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
@@ -65,15 +36,8 @@ class UcusKanitMission(Mission):
             self.step_controller.add_step(
                 Step(
                     step_name, 
-                    lambda loc=target_location: self.drone_controller.goto_location_with_offboard(loc), 
+                    lambda loc=target_location: self.drone_controller.goto_location(loc),
                     lambda loc=target_location: self.drone_controller.goto_location_check(loc)
-                )
-            )
-            self.step_controller.add_step(
-                Step(
-                    "Konumda Kal",
-                    lambda: sleep_for(hold_time),
-                    lambda: sleep_for_check(hold_time)
                 )
             )
             logging.info(f"{step_name} adımı eklendi.")
@@ -91,19 +55,19 @@ class UcusKanitMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = False
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = True
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = "/dev/ttyUSB0"
+    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
     if not isTesting:
         xbee_controller = XBeeController(
-            port=xbee_port,
+            port=xbee_port(),
             message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
         )
     drone = Drone(
@@ -112,39 +76,21 @@ async def main(sim_instance=0):
         isTesting=isTesting
     )
     drone_controller = DroneController(drone)
-    takeoff_altitude = 10.0
-    target_locations1 = [
-        {
-            "latitude": 40.326037, 
-            "longitude": 36.473655,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 40.325634,
-            "longitude": 36.473806,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 40.325428,
-            "longitude": 36.473451,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-    ]
     target_locations2 = [
         {
-            "latitude": 47.397970,
-            "longitude": 8.546641,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+            "latitude": 40.325763, 
+            "longitude": 36.473505,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
         {
-            "latitude": 47.397742,
-            "longitude": 8.546451,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+            "latitude": 40.325672,
+            "longitude": 36.473580,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
         {
-            "latitude": 47.397890,
-            "longitude": 8.546217,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
+            "latitude": 40.325460,
+            "longitude": 36.473591,
+            "altitude": drone.pre_takeoff_location["altitude"]+10,
         },
     ]
     await drone.mavsdk_controller.connect()
@@ -153,7 +99,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = UcusKanitMission(drone, drone_controller, takeoff_altitude=takeoff_altitude, target_locations=target_locations2, hold_time=10000)
+    mission = BireyEkleCikarMission(drone, drone_controller, takeoff_altitude=5.0, target_locations=target_locations2)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

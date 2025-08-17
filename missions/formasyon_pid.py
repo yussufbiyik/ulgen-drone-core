@@ -39,21 +39,17 @@ async def print_message(message):
 
 class FormasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("Formasyon", drone, **kwargs)
+        super().__init__("Formasyon PID", drone, **kwargs)
         self.drone_controller = drone_controller
         self.step_controller.wait_for_neighbors = True
 
     async def run(self):
-        # Görev modül olarak çağırıldığında
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         # Parametreleri Al
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 5.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
-
-        logging.info("Formasyon görevi başlatılıyor...")
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
         # Kalkış öncesi konumu ayarla

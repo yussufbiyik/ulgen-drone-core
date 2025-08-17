@@ -45,7 +45,7 @@ class DroneController:
                 self.drone.pre_takeoff_location = gps_position
                 logging.info(f"Geçerli veriler alındı.")
                 break
-            logging.info("Geçerli veriler henüz alınamadı, bekleniyor...")
+            logging.warning("Geçerli veriler henüz alınamadı, bekleniyor...")
             await asyncio.sleep(0.5)
 
     async def arm(self):

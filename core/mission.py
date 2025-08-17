@@ -40,6 +40,8 @@ class Mission:
         Görevi başlatır. Adımları kodda eklendikleri sırayla çalıştırır.
         Görev bitince konsola verileri yazar.
         """
+        # Görev modül olarak çağırıldığında
+        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         logging.info(f"{self.name} görevi başlatılıyor...")
         start_time = time.time() * 1000
         self.status["is_running"] = True

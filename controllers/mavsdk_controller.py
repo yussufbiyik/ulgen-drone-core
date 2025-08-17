@@ -35,7 +35,7 @@ def check_connected(func):
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
-    def __init__(self, system_address="udpin://0.0.0.0:14540", port=50050, connection_timeout=100):
+    def __init__(self, system_address="udpin://0.0.0.0:14540", port=50060, connection_timeout=100):
         self.mavsdk = System(
             port=port
         )

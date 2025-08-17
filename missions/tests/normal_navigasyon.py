@@ -13,13 +13,10 @@ from core.drone import Drone
 
 class UcusKanitMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("KTR Video", drone, **kwargs)
+        super().__init__("Normal Uçuş Kanıt", drone, **kwargs)
         self.drone_controller = drone_controller
 
     async def run(self):
-        # Görev modül olarak çağırıldığında
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("KTR Video görevi başlatılıyor...")
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla

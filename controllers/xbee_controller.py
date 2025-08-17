@@ -1,9 +1,11 @@
 import sys
+import asyncio
 import json
 import threading
 import time
 import logging
 import functools
+import inspect
 from queue import Queue, Full
 
 from digi.xbee.devices import XBeeDevice, XBeeMessage, RemoteXBeeDevice, XBee64BitAddress
@@ -28,41 +30,55 @@ class XBeeController:
         self.device.open()
         self.address = int.from_bytes(self.device.get_64bit_addr().address, "big")
         self.network = self.device.get_network()
-        self.message_received_callback = message_received_callback
+        # self.message_received_callback = message_received_callback
+        self.subscribers = []
+        if message_received_callback:
+            self.subscribers.append(message_received_callback)
         self.recent_messages = Queue(maxsize=max_queue_size)
-        self.queue_stop_event = threading.Event()
-        self.queue_thread = threading.Thread(target=self.queue_processor, daemon=True)
-        if self.message_received_callback:
-            self.queue_thread.start()
+        self.queue_thread = asyncio.create_task(self.queue_processor())
+        if self.subscribers:
             logging.warning("Mesaj kuyruğu işleme thread'i başlatıldı.")
         else:
             logging.warning("Mesaj alındığında çağrılacak callback fonksiyonu belirtilmemiş.")
 
     
-    def queue_processor(self):
+    async def queue_processor(self):
         """
         Mesaj kuyruğundan mesajları işleyen thread fonksiyonu.
         """
-        while not self.queue_stop_event.is_set():
+        while not self.queue_thread.done():
             if self.recent_messages.empty():
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
                 continue
             message = self.recent_messages.get(timeout=0.5)
             logging.debug(f"Mesaj işleniyor: {message}")
-            self.message_received_callback(message)
+            for callback in list(self.subscribers):
+                try:
+                    is_async = inspect.iscoroutinefunction(callback)
+                    if is_async:
+                        await callback(message)
+                    else:
+                        callback(message)
+                except Exception as e:
+                    logging.exception(f"Bir abonenin callback fonksiyonu çalıştırılırken hata oluştu: {e}")
             logging.debug("Callback çağrıldı.")
             self.recent_messages.task_done()
 
-    def set_message_received_callback(self, callback):
+    def subscribe(self, callback):
         """
-        XBee'den gelen mesajları işlemek için callback fonksiyonunu ayarlar.
+        XBee'den gelen mesajlara bir callback fonksiyonunu abone eder.
         """
-        self.message_received_callback = callback
-        if not self.queue_thread.is_alive():
-            self.queue_thread = threading.Thread(target=self.queue_processor, daemon=True)
-            self.queue_thread.start()
+        self.subscribers.append(callback)
+        if self.queue_thread.done():
+            self.queue_thread = asyncio.create_task(self.queue_processor())
             logging.info("Mesaj kuyruğu işleme thread'i yeniden başlatıldı.")
-    
+
+    def unsubscribe(self, callback):
+        """
+        Verilen callback fonksiyonunu abonelikten çıkarır.
+        """
+        self.subscribers.remove(callback)
+
     def default_message_received_callback(self, message: XBeeMessage):
         """
         Xbee'den gelen mesajları işleyen callback fonksiyonu.
@@ -166,7 +182,7 @@ class XBeeController:
         if self.device.is_open():
             self.device.close()
             logging.info("XBee kapatıldı.")
-            self.queue_stop_event.set()
+            self.queue_thread.cancel()
             logging.info("Mesaj kuyruğu işleme thread'i durduruldu.")
         else:
             logging.warning("XBee zaten kapalı.")
