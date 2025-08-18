@@ -55,8 +55,9 @@ class UcusKanitMission(Mission):
         self.step_controller.add_step(
             Step("Offboard Moda Geç",
                 self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
+                self.drone_controller.enable_offboard_controller_check
             )
+        )
         # Hedef noktalara ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"
@@ -75,6 +76,12 @@ class UcusKanitMission(Mission):
                 )
             )
             logging.info(f"{step_name} adımı eklendi.")
+        self.step_controller.add_step(
+                Step("Offboard Modu Kapat",
+                    self.drone_controller.disable_offboard_controller,
+                    self.drone_controller.disable_offboard_controller_check
+                )
+            )
         # Hedef konumlara ulaşıldıktan sonra zemine in
         # Kontrol fonksiyonu olarak altitude_check fonksiyonu kullanılabilir
         self.step_controller.add_step(Step("Land", self.drone_controller.land,
@@ -89,8 +96,8 @@ class UcusKanitMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,

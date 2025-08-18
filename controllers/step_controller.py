@@ -7,7 +7,7 @@ from core.drone import Drone
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s')
 
 class Step:
-    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None):
+    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None, is_neighbor_dependant=True):
         """
         Adım sınıfı.
 
@@ -19,13 +19,15 @@ class Step:
         isRequired (bool, optional): Adımın gerekli olup olmadığını belirler. Varsılan False.
         timeout (int, optional): Adımın zaman aşımı süresi (milisaniye cinsinden). Varsayılan None.
         """
+        self.is_completed = False
+
         self.name = name
         self.function = function
         self.checkFunction = checkFunction
         self.preCheckFunction = preCheckFunction
-        self.is_completed = False
         self.isRequired = isRequired
         self.timeout = timeout
+        self.is_neighbor_dependant = is_neighbor_dependant
 
 class StepController:
     def __init__(self, drone: Drone):
@@ -78,7 +80,7 @@ class StepController:
                 self.drone.mission_info["current_step"]["status"] = 1
                 logging.info(f"Adım {step.name} başarıyla tamamlandı.")
                 # Diğer dronları bekle
-                if self.wait_for_neighbors:
+                if self.wait_for_neighbors and step.is_neighbor_dependant:
                     logging.info("Diğer dronların adımı tamamlaması bekleniyor...")
                     while True:
                         drones_to_wait = [

@@ -101,7 +101,7 @@ class SuruNavigasyonMission(Mission):
             logging.info(f"{step_name} adımı eklendi.")
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
-        self.step_controller.add_step(Step("Disarm Et", self.drone_controller.disarm, self.drone_controller.disarm_check, self.drone_controller.disarm_pre_check))
+        self.step_controller.add_step(Step("Disarm Et", self.drone_controller.disarm, self.drone_controller.disarm_check, self.drone_controller.disarm_pre_check, is_neighbor_dependant=False))
         logging.info("Adımlar eklendi, adımlar çalıştırılıyor...")
         await super().run()
 

@@ -57,8 +57,8 @@ class Mission:
         finally:
             end_time = time.time() * 1000
             self.status["is_running"] = False
-            isSuccess = self.status["error"] is None
-            log_message = f"{self.name} görevi {'başarıyla' if isSuccess else 'hatalı olarak'} tamamlandı."
+            isSuccess = True if self.status["error"] is None else False
+            log_message = f"{self.name} görevi {'başarıyla' if isSuccess else 'hatalı şekilde'} tamamlandı."
             if isSuccess:
                 logging.info(log_message)
             else:

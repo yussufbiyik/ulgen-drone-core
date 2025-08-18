@@ -149,7 +149,17 @@ class DroneController:
             logging.info("OffboardController etkin.")
             return True
         return False
-    
+
+    async def disable_offboard_controller(self):
+        logging.info("OffboardController devre dışı bırakılıyor...")
+        self.drone.offboard_status["is_active"] = False
+        await self.drone.mavsdk_controller.mavsdk.offboard.stop()
+    async def disable_offboard_controller_check(self):
+        if not await self.drone.mavsdk_controller.mavsdk.offboard.is_active() and not self.drone.offboard_status["is_active"]:
+            logging.info("OffboardController devre dışı.")
+            return True
+        return False
+
     async def goto_location(self, target_location):
         """
         Drone'u belirli bir konuma götüren adım fonksiyonu.
