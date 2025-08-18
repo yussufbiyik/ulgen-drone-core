@@ -76,11 +76,7 @@ class FormasyonMission(Mission):
         # Formasyona gir
         self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
-        # Formasyonlar arası geçiş yap
-        self.step_controller.add_step(formation_step("ok", formation_distance))
-        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
-        self.step_controller.add_step(formation_step("cizgi", formation_distance))
-        self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+        # İniş Yap
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
         self.step_controller.add_step(Step("Disarm Et", self.drone_controller.disarm, self.drone_controller.disarm_check, self.drone_controller.disarm_pre_check))

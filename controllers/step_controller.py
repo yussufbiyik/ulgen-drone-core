@@ -47,12 +47,24 @@ class StepController:
         self.steps.append(step)
         logging.info(f"Adım eklendi: {step.name}")
 
+    def abort_steps(self):
+        """
+        Tüm adımları iptal eder.
+        """
+        logging.info("Tüm adımlar iptal ediliyor...")
+        for step in self.steps:
+            step.is_completed = False
+        self.is_all_done = True
+
     async def run_steps(self):
         """
         Adımları sırayla çalıştırır.
         """
         logging.info("Adımlar çalıştırılıyor...")
         for step in self.steps:
+            if self.is_all_done:
+                logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
+                break
             step_index = self.steps.index(step) + 1
             self.active_step = step_index
             self.drone.mission_info["current_step"]["index"] = step_index

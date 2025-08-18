@@ -64,3 +64,12 @@ class Mission:
             else:
                 logging.error(log_message)
             logging.info(f"Görevin tamamlanma süresi: {end_time - start_time:.2f} ms")
+
+    def abort(self):
+        """
+        Görevi iptal eder.
+        """
+        logging.info(f"{self.name} görevi iptal ediliyor...")
+        self.status["is_running"] = False
+        self.status["error"] = "Görev iptal edildi."
+        self.step_controller.abort_steps()
