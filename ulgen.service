@@ -4,18 +4,18 @@ After=network.target
 
 [Service]
 # Run your wrapper script
-ExecStart=%h/ulgen/drone-core/ulgen-service.sh
+ExecStart=%h/drone-core/ulgen-service.sh
 
 # Ensure the service restarts if it crashes
 Restart=always
 RestartSec=5
 
 # Run inside your project directory
-WorkingDirectory=%h/ulgen/drone-core
+WorkingDirectory=%h/drone-core
 
 # Log output into a file inside your home
-StandardOutput=append:%h/ulgen/drone-core/drone-core.log
-StandardError=append:%h/ulgen/drone-core/drone-core.log
+StandardOutput=append:%h/drone-core/drone-core.log
+StandardError=append:%h/drone-core/drone-core.log
 
 [Install]
 WantedBy=default.target
