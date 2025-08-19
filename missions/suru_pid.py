@@ -43,7 +43,6 @@ class SuruNavigasyonMission(Mission):
         super().__init__("Sürü PID Navigasyon", drone, **kwargs)
         self.drone_controller = drone_controller
         self.step_controller.wait_for_neighbors = True
-        self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
 
     async def run(self):
         # Parametreleri Al

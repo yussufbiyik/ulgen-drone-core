@@ -43,7 +43,6 @@ class SuruNavigasyonMission(Mission):
         super().__init__("Sürü Normal Navigasyon", drone, **kwargs)
         self.drone_controller = drone_controller
         self.step_controller.wait_for_neighbors = True
-        self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
 
     async def run(self):
         # Parametreleri Al
@@ -59,6 +58,7 @@ class SuruNavigasyonMission(Mission):
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Takeoff yap
+        print(takeoff_altitude)
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),

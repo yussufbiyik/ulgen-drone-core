@@ -33,7 +33,7 @@ xbee_port = lambda num: f"/dev/ttyUSB{num}"
 class DroneService:
     def __init__(self):
         self.mavsdk_controller = MAVSDKController(
-            system_address=real_mavsdk_address,
+            system_address=sim_mavsdk_address,
             port=50060+args.drone_id
         )
         self.xbee_controller = None
@@ -62,6 +62,7 @@ class DroneService:
             try:
                 self.xbee_controller = XBeeController(
                     port=xbee_port(port),
+                    baudrate=57600,
                     message_received_callback=self.handle_gcs_messages
                 )
                 logging.info(f"XBee {port} numaralı portta bulundu.")
@@ -106,6 +107,14 @@ class DroneService:
                         })
         return locations
 
+    def abortActiveMission(self):
+        """
+        O an çalışan görevi iptal eder.
+        """
+        if self.activeMission is not None and self.activeMission.status["is_running"] == True:
+            self.activeMission.abort()
+            self.activeMission = None
+
     async def handle_gcs_messages(self, raw_message):
         """
         Yer kontrol istasyonundan (GCS) gelen mesajları işler.
@@ -122,27 +131,22 @@ class DroneService:
             self.drone.pre_takeoff_location = gps_position
         elif message == "lnd":
             logging.info("GCS'den LND (Landing) mesajı alındı.")
+            self.abortActiveMission()
             await self.drone.mavsdk_controller.mavsdk.action.land()
         elif message == "kill":
             logging.info("GCS'den KILL mesajı alındı.")
             await self.drone.mavsdk_controller.mavsdk.action.kill()
-        elif message == "home":
-            logging.info("GCS'den HOME mesajı alındı.")
+        elif message == "rtl":
+            logging.info("GCS'den RTL (Return to Launch) mesajı alındı.")
+            self.abortActiveMission()
             await self.drone_controller.go_home()
-            is_home_done = await self.drone_controller.go_home_check()
-            while not is_home_done:
-                is_home_done = await self.drone_controller.go_home_check()
-                await asyncio.sleep(1)
             logging.info("Drone ev konumuna döndü.")
         elif message == "rb":
             logging.info("GCS'den RB (Reboot) mesajı alındı.")
         elif message == "abrt":
             logging.info("GCS'den ABRT (Abort) mesajı alındı.")
-            if self.activeMission is not None and self.activeMission.status["is_running"] == True:
-                self.activeMission.abort()
-                self.activeMission = None
-                logging.info("Aktif görev iptal edildi, drone iniş yapıyor...")
-                await self.drone.mavsdk_controller.mavsdk.action.land()
+            self.abortActiveMission()
+            await self.drone.mavsdk_controller.mavsdk.action.land()
         elif message.startswith("g"):
             logging.info("GCS'den görev mesajı alındı.")
             if self.activeMission is not None and self.activeMission.status["is_running"] == True:

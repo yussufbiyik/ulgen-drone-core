@@ -77,8 +77,7 @@ class MAVSDKController:
         Drone ile bağlantı kurar.
         """
         try:
-            is_connected = await self.mavsdk.core.connection_state().__anext__()
-            if self.is_connected or is_connected:
+            if self.is_connected:
                 logging.info("Drone zaten bağlı.")
                 return
             await self.mavsdk.connect(system_address=self.connection_url)

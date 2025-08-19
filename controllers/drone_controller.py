@@ -402,7 +402,7 @@ class DroneController:
             return True
         return False
 
-    async def go_home(self, takeoff_altitude):
+    async def go_home(self):
         """
         Drone'u ev konumuna geri döndürür, 
         ilk başta irtifayı yarıya indirir,
@@ -415,22 +415,14 @@ class DroneController:
         await self.drone.mavsdk_controller.mavsdk.action.goto_location(
             current_gps["latitude"],
             current_gps["longitude"],
-            current_gps["altitude"]-takeoff_altitude/2,
+            current_gps["altitude"]-self.drone.altitude_target/2,
             0,  # yaw
         )
-        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
-            self.drone.pre_takeoff_location["latitude"],
-            self.drone.pre_takeoff_location["longitude"],
-            self.drone.pre_takeoff_location["altitude"],
-            0,  # yaw
-        )
-
-    async def go_home_check(self):
-        current_data = await self.drone.mavsdk_controller.get_general_info()
-        current_gps = current_data["gps_position"]
-        if abs(current_gps["altitude"] - self.drone.pre_takeoff_location["altitude"]) > 0.5:
-            return False
-        else:
-            if self.drone.formation["position"]:
-                await self.drone.send_message_with_ack(f"m,h,{self.drone.formation['position']['latitude']:.6f},{self.drone.formation['position']['longitude']:.6f}".replace(".", ""))
-            return True
+        while abs(current_gps["altitude"] - self.drone.pre_takeoff_location["altitude"]) > (self.drone.altitude_target/2)+self.drone.waypoint_threshold:
+            current_data = await self.drone.mavsdk_controller.get_general_info()
+            current_gps = current_data["gps_position"]
+            logging.info(f"Drone ev konumuna dönüyor, anlık irtifa: {current_gps['altitude']}")
+            logging.info(abs(current_gps["altitude"] - self.drone.pre_takeoff_location["altitude"]))
+            await asyncio.sleep(0.1)
+        await self.drone.mavsdk_controller.mavsdk.action.return_to_launch()
+        await self.drone.send_message_with_ack(f"m,h,{self.drone.formation['position']['latitude']:.6f},{self.drone.formation['position']['longitude']:.6f}".replace(".", ""))
