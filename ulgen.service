@@ -1,10 +1,10 @@
 [Unit]
-Type=simple
 Description=Drone Core Service
 After=network.target
 
 [Service]
 # Run your wrapper script
+Type=simple
 ExecStart=%h/drone-core/ulgen-service.sh
 
 # Ensure the service restarts if it crashes
