@@ -3,6 +3,7 @@ Description=Drone Core Service
 After=network.target
 
 [Service]
+User=pi
 # Run your wrapper script
 ExecStart=%h/drone-core/ulgen-service.sh
 
