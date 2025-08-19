@@ -10,4 +10,5 @@ git pull
 # Servis scriptini çalıştır
 exec python "$HOME/drone-core/service.py"
 
+# testing
 # sudo mkdir -p ~/.ssh && sudo mv Desktop/id_ed25519 ~/.ssh && chmod 600 ~/.ssh/id_ed25519 && cd drone-core && git checkout sartname_gorevleri && 
