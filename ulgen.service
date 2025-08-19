@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 # Run your wrapper script
-ExecStart=%h/ulgen/drone-core/start_myservice.sh
+ExecStart=%h/ulgen/drone-core/ulgen-service.sh
 
 # Ensure the service restarts if it crashes
 Restart=always
