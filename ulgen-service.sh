@@ -4,6 +4,7 @@ conda activate mavsdk
 cd "$HOME/drone-core" || exit 1
 
 # Güncellemeleri al
+git reset --hard
 git pull
 
 # Servis scriptini çalıştır
