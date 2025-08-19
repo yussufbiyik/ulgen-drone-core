@@ -1,4 +1,5 @@
 [Unit]
+Type=simple
 Description=Drone Core Service
 After=network.target
 
