@@ -126,6 +126,14 @@ class DroneService:
         elif message == "kill":
             logging.info("GCS'den KILL mesajı alındı.")
             await self.drone.mavsdk_controller.mavsdk.action.kill()
+        elif message == "home":
+            logging.info("GCS'den HOME mesajı alındı.")
+            await self.drone_controller.go_home()
+            is_home_done = await self.drone_controller.go_home_check()
+            while not is_home_done:
+                is_home_done = await self.drone_controller.go_home_check()
+                await asyncio.sleep(1)
+            logging.info("Drone ev konumuna döndü.")
         elif message == "rb":
             logging.info("GCS'den RB (Reboot) mesajı alındı.")
         elif message == "abrt":

@@ -401,3 +401,36 @@ class DroneController:
             logging.info(f"Drone hedef konuma ulaştı, anlık konum: {gps_position}")
             return True
         return False
+
+    async def go_home(self, takeoff_altitude):
+        """
+        Drone'u ev konumuna geri döndürür, 
+        ilk başta irtifayı yarıya indirir,
+        ardından iniş yapar.
+        """
+        logging.info("Drone ev konumuna dönüyor...")
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        self.drone.offboard_status["is_active"] = False
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            current_gps["latitude"],
+            current_gps["longitude"],
+            current_gps["altitude"]-takeoff_altitude/2,
+            0,  # yaw
+        )
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            self.drone.pre_takeoff_location["latitude"],
+            self.drone.pre_takeoff_location["longitude"],
+            self.drone.pre_takeoff_location["altitude"],
+            0,  # yaw
+        )
+
+    async def go_home_check(self):
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        if abs(current_gps["altitude"] - self.drone.pre_takeoff_location["altitude"]) > 0.5:
+            return False
+        else:
+            if self.drone.formation["position"]:
+                await self.drone.send_message_with_ack(f"m,h,{self.drone.formation['position']['latitude']:.6f},{self.drone.formation['position']['longitude']:.6f}".replace(".", ""))
+            return True
