@@ -78,36 +78,29 @@ class DroneService:
         location_input_type = int(parsed_message[startIndex])  # 0:"gps" veya 1:"ned"
         locations_raw = parsed_message[startIndex+1:]
         locations = []
-        for index, raw_location in enumerate(locations_raw):
-            if index in range(len(locations_raw)) and index+1 in range(len(locations_raw)):
-                if location_input_type == 0:  # "gps"
-                    lat = float(locations_raw[index])/math.pow(10, 6)
-                    lon = float(locations_raw[index+1])/math.pow(10, 6)
-                    locations.append({
-                        "latitude": lat,
-                        "longitude": lon,
-                        "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
-                    })
-                else:
-                    north_offset = float(locations_raw[index])
-                    east_offset = float(locations_raw[index+1])
-                    # Konumlar listesine eklenen ilk eleman sürünün o anlık merkezine göre eklenir
-                    # peşine eklenenler ise bir öncekinin konumuna göre hesaplanır
-                    swarm_weight_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
-                    if len(locations) == 0: 
-                        lat, lon = ned_to_latlon(north_offset, east_offset, swarm_weight_center["latitude"], swarm_weight_center["longitude"])
-                        locations.append({
-                            "latitude": lat,
-                            "longitude": lon,
-                            "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
-                        })
-                    else:
-                        lat, lon = ned_to_latlon(north_offset, east_offset, locations[-1]["latitude"], locations[-1]["longitude"])
-                        locations.append({
-                            "latitude": lat,
-                            "longitude": lon,
-                            "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
-                        })
+        if location_input_type == 0:  # "gps"
+            lat = float(locations_raw[index])/math.pow(10, 6)
+            lon = float(locations_raw[index+1])/math.pow(10, 6)
+            locations.append({
+                "latitude": lat,
+                "longitude": lon,
+                "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
+            })
+        else:
+            swarm_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
+            ref_lat, ref_lon = swarm_center["latitude"], swarm_center["longitude"]
+            for index in range(0, len(locations_raw), 2):
+                if index + 1 < len(locations_raw):
+                    break
+                north_offset = float(locations_raw[index])
+                east_offset = float(locations_raw[index+1])
+                lat, lon = ned_to_latlon(north_offset, east_offset, ref_lat, ref_lon)
+                locations.append({
+                    "latitude": lat,
+                    "longitude": lon,
+                    "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
+                })
+                ref_lat, ref_lon = lat, lon  # Son konumu referans olarak güncelle
         return locations
 
     def abortActiveMission(self):
