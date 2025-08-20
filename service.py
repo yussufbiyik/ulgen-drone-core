@@ -35,7 +35,7 @@ xbee_port = lambda num: f"/dev/ttyUSB{num}"
 class DroneService:
     def __init__(self):
         self.mavsdk_controller = MAVSDKController(
-            system_address=sim_mavsdk_address,
+            system_address=real_mavsdk_address,
             port=50060+args.drone_id
         )
         self.xbee_controller = None
