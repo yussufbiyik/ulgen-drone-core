@@ -99,8 +99,8 @@ class StepController:
                             neighbor
                             for neighbor in self.drone.neighbors
                             if (neighbor["data"]["mission"]["current_step"]["index"] == step_index
-                            and neighbor["data"]["mission"]["current_step"]["status"] == 0)
-                            or neighbor["data"]["mission"]["current_step"]["index"] < step_index
+                            and neighbor["data"]["mission"]["current_step"]["status"] == 0 and neighbor["data"]["is_formation_drone"])
+                            or (neighbor["data"]["mission"]["current_step"]["index"] < step_index and neighbor["data"]["is_formation_drone"])
                         ]
                         if len(drones_to_wait) == 0:
                             break

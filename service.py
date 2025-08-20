@@ -18,6 +18,8 @@ from missions.formasyon_normal import FormasyonMission as FormasyonNormal
 from missions.formasyon_pid import FormasyonMission as FormasyonPID
 from missions.suru_normal import SuruNavigasyonMission as SuruNavigasyonNormal
 from missions.suru_pid import SuruNavigasyonMission as SuruNavigasyonPID
+from missions.birey_ekle_cikar import BireyEkleCikarMission
+
 # Test Görevleri
 from missions.tests.pid_navigasyon import UcusKanitMission
 
@@ -72,9 +74,9 @@ class DroneService:
                 logging.exception(f"XBee {port} numaralı portta bulunamadı veya başka bir hata gerçekleşti.\nHata:{e}")
                 continue
 
-    def get_locations_from_parsed_message(self, gps_position, takeoff_altitude, parsed_message):
-        location_input_type = int(parsed_message[6])  # 0:"gps" veya 1:"ned"
-        locations_raw = parsed_message[7:]
+    def get_locations_from_parsed_message(self, gps_position, takeoff_altitude, parsed_message, startIndex):
+        location_input_type = int(parsed_message[startIndex])  # 0:"gps" veya 1:"ned"
+        locations_raw = parsed_message[startIndex+1:]
         locations = []
         for index, raw_location in enumerate(locations_raw):
             if index in range(len(locations_raw)) and index+1 in range(len(locations_raw)):
@@ -158,18 +160,18 @@ class DroneService:
             drone_distance = int(parsed_message[3])
             hold_seconds = int(parsed_message[4])*math.pow(10, 3)  # milisaniye cinsinden
             if mission_id == 0: # Formasyon (Normal GO-TO Versiyonu)
-                formation_type = parsed_message[5]
+                formation_types = parsed_message[5:]
                 self.activeMission = FormasyonNormal(
                     self.drone, self.drone_controller,
                     takeoff_altitude=takeoff_altitude,
                     formation_distance=drone_distance,
                     formation_duration=hold_seconds,
 
-                    user_selected_formation_type=formation_type,
+                    user_selected_formation_types=formation_types,
                 )
             elif mission_id == 1: # Navigasyon (Normal GO-TO Versiyonu)
-                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message)
                 formation_type = parsed_message[5]
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 6)
                 self.activeMission = SuruNavigasyonNormal(
                     self.drone, self.drone_controller,
                     takeoff_altitude=takeoff_altitude,
@@ -180,9 +182,20 @@ class DroneService:
                     target_locations=mission_parameters,
                 )
             elif mission_id == 2: # Birey Ekleme Çıkarma
-                mission_parameters = ""
+                is_main_member = int(parsed_message[5])
+                formation_type = parsed_message[6]
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 8)
+                self.activeMission = BireyEkleCikarMission(
+                    self.drone, self.drone_controller,
+                    takeoff_altitude=takeoff_altitude,
+                    formasyon_suresi=hold_seconds,
+                    formation_distance=drone_distance,
+                    is_main_group_drone=is_main_member,
+                    user_selected_formation_type=formation_type,
+                    target_positions=mission_parameters
+                )
             elif mission_id == 3: # Keşif
-                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message)
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 6)
             elif mission_id == 4: # Tek dron test görevi
                 self.activeMission = UcusKanitMission(
                     drone=self.drone, drone_controller=self.drone_controller,

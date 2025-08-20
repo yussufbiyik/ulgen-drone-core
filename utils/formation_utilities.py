@@ -76,6 +76,10 @@ def calculate_formation_weight_center(self_position, neighbors):
     """
     if not neighbors:
         return self_position
+    if not neighbors:
+        logging.debug("Aktif komşu drone bulunamadı.")
+        return self_position
+
     total_lat = self_position["latitude"]
     total_lon = self_position["longitude"]
     count = 1 

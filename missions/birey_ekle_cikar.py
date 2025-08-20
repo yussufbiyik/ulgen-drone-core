@@ -45,15 +45,12 @@ class BireyEkleCikarMission(Mission):
 
     async def run(self):
         # Parametreleri Al
-        is_main_group_drone = self.parameters.get("is_main_group_drone", True)
+        is_main_group_drone = self.parameters.get("is_main_group_drone", 0)
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 5.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
-        mission_subjects = self.parameters.get("mission_subjects", [])
-        if len(mission_subjects) == 0:
-            logging.error("Görev için gerekli parametreler eksik. Lütfen görev parametrelerini kontrol edin.")
-            return
+        target_positions = self.parameters.get("target_positions", [])
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(1)))
@@ -61,8 +58,22 @@ class BireyEkleCikarMission(Mission):
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
         # Herhangi bir hareket yapmadan önce ana grupta olup olmadığını kontrol et
         # eğer ana gruptaysa ilerler, değilse ayrılan drondan mesaj gelene kadar bekler
-        if not is_main_group_drone: # Ayrılmış dronun görevi
-            return
+        if is_main_group_drone == 0: # Ayrılmış dronun görevi
+            await self.drone.send_message_with_ack("mf0")
+            self.step_controller.add_step(
+                    Step(
+                        "Ayrılacak Dronun Mesajını Bekle",
+                        lambda: print_message("Ayrılacak dronun mesajı bekleniyor..."),
+                        self.drone_controller.wait_for_neighbor_home
+                    )
+                )
+            self.step_controller.add_step(
+                    Step(
+                        "Ayrılacak Dronun Konumuna Git",
+                        self.drone_controller.goto_homed_neighbor_position,
+                        self.drone_controller.goto_homed_neighbor_position_check
+                    )
+                )
         else: # Ana grup dronunun görevi
             # Arm et
             self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
@@ -78,9 +89,20 @@ class BireyEkleCikarMission(Mission):
                     lambda: self.drone_controller.goto_formation_location(formation_name, distance),
                     lambda: self.drone_controller.goto_formation_location_check()
                 )
+            formation_hold_step = lambda hold_time: Step(
+                    "Formasyonda Kal",
+                    lambda: sleep_for(hold_time),
+                    lambda: sleep_for_check(hold_time)
+                )
             # Formasyona gir
             self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
+            self.step_controller.add_step(formation_hold_step(formasyon_suresi))
             # İndirilme ihtimaline karşı broadcast bekle
+            self.step_controller.add_step(Step(
+                    "Bir dronun pozisyona gelmesini bekle",
+                    lambda: print_message("Yer değişecek dronun yerleşmesi bekleniyor..."),
+                    lambda: self.drone_controller.wait_for_neighbor_swap()
+                ))
         # İniş Yap
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et

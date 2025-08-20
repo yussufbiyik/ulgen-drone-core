@@ -37,46 +37,71 @@ async def print_message(message):
     """
     logging.info(message)
 
-class FormasyonMission(Mission):
+class BireyEkleCikar3DroneMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("Formasyon", drone, **kwargs)
+        super().__init__("Birey Ekle Çıkar", drone, **kwargs)
         self.drone_controller = drone_controller
         self.step_controller.wait_for_neighbors = True
 
     async def run(self):
         # Parametreleri Al
-        user_selected_formation_types = self.parameters.get("user_selected_formation_types", [])
+        is_main_group_drone = self.parameters.get("is_main_group_drone", 0)
+        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 5.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        target_positions = self.parameters.get("target_positions", [])
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(1)))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
-        # Arm et
-        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
-        # Takeoff yap
-        self.step_controller.add_step(
-            Step("Takeoff",
-                 lambda: self.drone_controller.takeoff(takeoff_altitude),
-                 lambda: self.drone_controller.altitude_check(takeoff_altitude)
+        # Herhangi bir hareket yapmadan önce ana grupta olup olmadığını kontrol et
+        # eğer ana gruptaysa ilerler, değilse ayrılan drondan mesaj gelene kadar bekler
+        if is_main_group_drone == 0: # Ayrılmış dronun görevi
+            self.step_controller.add_step(
+                    Step(
+                        "Ayrılacak Dronun Mesajını Bekle",
+                        lambda: print_message("Ayrılacak dronun mesajı bekleniyor..."),
+                        self.drone_controller.wait_for_neighbor_home
+                    )
                 )
-            )
-        formation_step = lambda formation_name, distance: Step(
-                "Formasyona Gir",
-                lambda: self.drone_controller.goto_formation_location(formation_name, distance),
-                lambda: self.drone_controller.goto_formation_location_check()
-            )
-        formation_hold_step = lambda hold_time: Step(
-                "Formasyonda Kal",
-                lambda: sleep_for(hold_time),
-                lambda: sleep_for_check(hold_time)
-            )
-        # Formasyona gir
-        for formation_type in user_selected_formation_types:
-            self.step_controller.add_step(formation_step(formation_type, formation_distance))
+            self.step_controller.add_step(
+                    Step(
+                        "Ayrılacak Dronun Konumuna Git",
+                        self.drone_controller.goto_homed_neighbor_position,
+                        self.drone_controller.goto_homed_neighbor_position_check
+                    )
+                )
+        else: # Ana grup dronunun görevi
+            # Arm et
+            self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
+            # Takeoff yap
+            self.step_controller.add_step(
+                Step("Takeoff",
+                    lambda: self.drone_controller.takeoff(takeoff_altitude),
+                    lambda: self.drone_controller.altitude_check(takeoff_altitude)
+                    )
+                )
+            formation_step = lambda formation_name, distance: Step(
+                    "Formasyona Gir",
+                    lambda: self.drone_controller.goto_formation_location(formation_name, distance),
+                    lambda: self.drone_controller.goto_formation_location_check()
+                )
+            formation_hold_step = lambda hold_time: Step(
+                    "Formasyonda Kal",
+                    lambda: sleep_for(hold_time),
+                    lambda: sleep_for_check(hold_time)
+                )
+            # Formasyona gir
+            self.step_controller.add_step(formation_step(user_selected_formation_type, formation_distance))
             self.step_controller.add_step(formation_hold_step(formasyon_suresi))
+            # İndirilme ihtimaline karşı broadcast bekle
+            self.step_controller.add_step(Step(
+                    "Bir dronun pozisyona gelmesini bekle",
+                    lambda: print_message("Yer değişecek dronun yerleşmesi bekleniyor..."),
+                    lambda: self.drone_controller.wait_for_neighbor_swap()
+                ))
         # İniş Yap
         self.step_controller.add_step(Step("Land", self.drone_controller.land, lambda alt=0: self.drone_controller.altitude_check(alt)))
         # Disarm et
@@ -116,7 +141,15 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=5.0, user_selected_formation_types="cizgi", formation_distance=10.0, formation_duration=5000)
+    mission = BireyEkleCikarMission(
+            drone, 
+            drone_controller, 
+            takeoff_altitude=5.0, 
+            user_selected_formation_type="cizgi", 
+            formation_distance=10.0, 
+            formation_duration=5000,
+            is_main_group_drone=True
+        )
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

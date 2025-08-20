@@ -423,6 +423,67 @@ class DroneController:
             current_gps = current_data["gps_position"]
             logging.info(f"Drone ev konumuna dönüyor, anlık irtifa: {current_gps['altitude']}")
             logging.info(abs(current_gps["altitude"] - self.drone.pre_takeoff_location["altitude"]))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.5)
         await self.drone.mavsdk_controller.mavsdk.action.return_to_launch()
-        await self.drone.send_message_with_ack(f"m,h,{self.drone.formation['position']['latitude']:.6f},{self.drone.formation['position']['longitude']:.6f}".replace(".", ""))
+        await self.drone.send_message_with_ack("mh1")
+
+    async def wait_for_neighbor_home(self):
+        """
+        Komşu dronların ev konumuna dönmesini bekler.
+        """
+        neighbors_at_home = next((n for n in self.drone.neighbors if n["data"]["is_home"] == True), None)
+        if not neighbors_at_home:
+            logging.debug("Hiçbir komşu drone ev konumuna dönmedi.")
+            return False
+        return True
+    
+    async def wait_for_neighbor_swap(self):
+        """
+        Komşu dronların pozisyon değişimini bekler.
+        """
+        neighbors_at_swapped = next((n for n in self.drone.neighbors if n["data"]["is_on_position"] == True), None)
+        if not neighbors_at_swapped:
+            logging.debug("Hiçbir komşu drone pozisyon değişimi yapmadı.")
+            return False
+        return True
+
+    async def goto_homed_neighbor_position(self):
+        """
+        Ev konumuna dönen bir komşunun eski pozisyonuna gider.
+        """
+        homed_neighbors = [n for n in self.drone.neighbors if n["data"]["is_home"] == True]
+        if not homed_neighbors:
+            logging.debug("Ev konumuna dönen komşu drone bulunamadı.")
+        # İlk ev konumuna dönen komşu ile pozisyon değiştir
+        neighbor = homed_neighbors[0]
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        logging.info(f"Ev konumuna dönen komşu drone ile pozisyon değiştiriliyor: {neighbor['sender']}")
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            neighbor["data"]["target_position"]["latitude"],
+            neighbor["data"]["target_position"]["longitude"],
+            current_gps["altitude"]+self.drone.altitude_target/2, # Başta yarım irtifa ile gidip, lat, lon oturunca irtifayı yükseltecek
+            0,  # yaw
+        )
+        is_on_homed_neighbor_position = self.goto_location_check(neighbor["data"]["target_position"])
+        while not is_on_homed_neighbor_position:
+            is_on_homed_neighbor_position = await self.goto_location_check(neighbor["data"]["target_position"])
+            await asyncio.sleep(0.5)
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            neighbor["data"]["target_position"]["latitude"],
+            neighbor["data"]["target_position"]["longitude"],
+            current_gps["altitude"]+self.drone.altitude_target, # İrtifayı yükseltecek
+            0,  # yaw
+        )
+    
+    async def goto_homed_neighbor_position_check(self):
+        homed_neighbors = [n for n in self.drone.neighbors if n["data"]["is_home"] == True]
+        if not homed_neighbors:
+            logging.debug("Ev konumuna dönen komşu drone bulunamadı.")
+        # İlk ev konumuna dönen komşu ile pozisyon değiştir
+        neighbor = homed_neighbors[0]
+        is_on_homed_neighbor_position = await self.goto_location_check(neighbor["data"]["target_position"])
+        if is_on_homed_neighbor_position:
+            logging.info("Drone ev konumuna dönen komşu dronun formasyon konumu ile aynı konumda.")
+            await self.drone.send_message_with_ack("ms1")
+        return is_on_homed_neighbor_position

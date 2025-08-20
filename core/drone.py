@@ -103,6 +103,7 @@ class Drone:
         self.apf = APF()
         
         self.neighbors = []
+        self.inactive_neighbors = []
 
     # XBee ve simülasyon içi iletişim ile alakalı işlemler
     def listen_to_socket(self):
@@ -146,6 +147,9 @@ class Drone:
                 "data": {
                     "gps_position": gps_position,
                     "mission": mission,
+                    "is_on_position": False,
+                    "is_home": False,
+                    "is_formation_drone": True
                 }
             }
             self.neighbors.append(message_data)
@@ -167,9 +171,9 @@ class Drone:
             return
         message_data = message['data'].split(',')
         if message_data[0] == "mt":
-            # Formasyon konumuna gitme mesajı
+            # Konuma gitme mesajı
             if len(message_data) < 2:
-                logging.warning("Formasyon konumu mesajı eksik, geçiliyor.")
+                logging.warning("Konum mesajı eksik, geçiliyor.")
                 return
             latitude = int(message_data[1])/10**6
             longitude = int(message_data[2])/10**6
@@ -181,6 +185,22 @@ class Drone:
         elif message_data[0] == "mts":
             neighbor["data"]["target_status"] = int(message_data[1])
             logging.debug(f"{sender} drone'u, formasyon hesaplarını tamamladı.")
+        elif message_data[0] == "mf0":
+            self.neighbors.remove(neighbor)
+            self.inactive_neighbors.append(neighbor)
+            logging.debug(f"{sender} drone'u, formasyon dışı olarak işaretlendi.")
+        elif message_data[0] == "mf1":
+            self.inactive_neighbors.remove(neighbor)
+            self.neighbors.append(neighbor)
+            neighbor["data"]["is_formation_drone"] = True
+            logging.debug(f"{sender} drone'u, formasyona dahil edildi.")
+        elif message_data[0] == "mh1":
+            neighbor["data"]["is_home"] = True
+            logging.debug(f"{sender} drone'u, ev konumuna döndü.")
+        elif message_data[0] == "ms1":
+            neighbor["data"]["is_on_position"] = True
+            neighbor["data"]["is_formation_drone"] = True
+            logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
 
     def handle_message_received(self, recieved_message):
         """
