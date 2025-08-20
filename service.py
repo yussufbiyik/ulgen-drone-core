@@ -11,7 +11,7 @@ from core.drone import Drone
 from controllers.xbee_controller import XBeeController
 from controllers.mavsdk_controller import MAVSDKController
 from controllers.drone_controller import DroneController
-from utils.formation_utilities import ned_to_latlon
+from utils.formation_utilities import ned_to_latlon, calculate_formation_weight_center
 
 # Ana Görevler
 from missions.formasyon_normal import FormasyonMission as FormasyonNormal
@@ -91,10 +91,11 @@ class DroneService:
                 else:
                     north_offset = float(locations_raw[index])
                     east_offset = float(locations_raw[index+1])
-                    # Konumlar listesine eklenen ilk eleman dronun o anlık durumuna göre eklenir
+                    # Konumlar listesine eklenen ilk eleman sürünün o anlık merkezine göre eklenir
                     # peşine eklenenler ise bir öncekinin konumuna göre hesaplanır
+                    swarm_weight_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
                     if len(locations) == 0: 
-                        lat, lon = ned_to_latlon(north_offset, east_offset, gps_position["latitude"], gps_position["longitude"])
+                        lat, lon = ned_to_latlon(north_offset, east_offset, swarm_weight_center["latitude"], swarm_weight_center["longitude"])
                         locations.append({
                             "latitude": lat,
                             "longitude": lon,
