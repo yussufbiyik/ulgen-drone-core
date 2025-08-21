@@ -454,10 +454,6 @@ class DroneController:
             await asyncio.sleep(0.1)
         # İniş yap
         await self.land()
-        is_landed = await self.altitude_check(0)
-        while not is_landed:
-            await asyncio.sleep(0.1)
-            is_landed = await self.altitude_check(0)
         await asyncio.sleep(hold_time)  # Bir süre bekle, ardından formasyona geri gir
         # Arm değilse arm et
         is_armed = await self.arm_check()
