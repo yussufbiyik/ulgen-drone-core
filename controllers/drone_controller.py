@@ -454,6 +454,9 @@ class DroneController:
             await asyncio.sleep(0.1)
         # İniş yap
         await self.land()
+        # Saha testlerinde buraya koyduğum irtifa kontrol kodu sorun çıkarttığı için dron yerde kitlenmişti
+        # irtifa kontrolünü kaldırdım, nasıl davranır bilmiyorum dikkat edin
+        # sorun olursa eski versiyondan geri ekleyin
         await asyncio.sleep(hold_time)  # Bir süre bekle, ardından formasyona geri gir
         # Arm değilse arm et
         is_armed = await self.arm_check()
