@@ -419,6 +419,7 @@ class DroneController:
         Dronu formasyondan çıkartır ve eve döndürür
         """
         if not self.drone.formation["leave"]:
+            logging.info(self.drone.formation["leave"])
             return
         self.drone.formation["is_active"] = False
         self.drone.formation["position"] = None
