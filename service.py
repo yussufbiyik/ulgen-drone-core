@@ -26,6 +26,7 @@ from missions.tests.pid_navigasyon import UcusKanitMission
 # Simülasyon ise dron numarasını al
 parser = argparse.ArgumentParser(description="Ülgen Sürü IHA Takımı Dron Servisi")
 parser.add_argument("--drone_id", type=int, default=0, help="Simülasyondaki dron numarası", required=False)
+parser.add_argument("--is_sim", type=int, default=False, help="Simülasyonda mı?", required=False)
 args = parser.parse_args()
 
 real_mavsdk_address = "serial:///dev/ttyACM0:57600"
@@ -35,7 +36,7 @@ xbee_port = lambda num: f"/dev/ttyUSB{num}"
 class DroneService:
     def __init__(self):
         self.mavsdk_controller = MAVSDKController(
-            system_address=real_mavsdk_address,
+            system_address=sim_mavsdk_address if args.is_sim else real_mavsdk_address,
             port=50060+args.drone_id
         )
         self.xbee_controller = None
@@ -87,11 +88,16 @@ class DroneService:
                 "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
             })
         else:
+            print("ned")
             swarm_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
             ref_lat, ref_lon = swarm_center["latitude"], swarm_center["longitude"]
+            print(len(locations_raw))
             for index in range(0, len(locations_raw), 2):
-                if index + 1 < len(locations_raw):
+                print(index)
+                if index + 1 >= len(locations_raw):
+                    print("geçiliyor...")
                     break
+                print("hesaplanıyor...")
                 north_offset = float(locations_raw[index])
                 east_offset = float(locations_raw[index+1])
                 lat, lon = ned_to_latlon(north_offset, east_offset, ref_lat, ref_lon)
@@ -101,6 +107,7 @@ class DroneService:
                     "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
                 })
                 ref_lat, ref_lon = lat, lon  # Son konumu referans olarak güncelle
+        print(f"Alınan konumlar: {locations}")
         return locations
 
     def abortActiveMission(self):

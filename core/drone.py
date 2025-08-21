@@ -198,6 +198,8 @@ class Drone:
             neighbor["data"]["is_home"] = True
             logging.debug(f"{sender} drone'u, ev konumuna döndü.")
         elif message_data[0] == "ms1":
+            self.inactive_neighbors.remove(neighbor)
+            self.neighbors.append(neighbor)
             neighbor["data"]["is_on_position"] = True
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
