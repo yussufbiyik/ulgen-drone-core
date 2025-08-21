@@ -5,6 +5,24 @@ import logging
 import asyncio
 import functools
 from mavsdk import System
+from mavsdk.tune import SongElement, TuneDescription, Tune
+
+# Başarılı melodi
+success_tune = [
+    SongElement.DURATION_8, SongElement.NOTE_C,
+    SongElement.DURATION_8, SongElement.NOTE_E,
+    SongElement.DURATION_8, SongElement.NOTE_G,
+    SongElement.DURATION_8, SongElement.NOTE_C, SongElement.OCTAVE_UP,
+    SongElement.DURATION_4, SongElement.NOTE_G, SongElement.OCTAVE_UP,
+    SongElement.DURATION_4, SongElement.NOTE_C, SongElement.OCTAVE_UP
+]
+
+# Başarısız melodi
+fail_tune = [
+    SongElement.DURATION_8, SongElement.NOTE_G,
+    SongElement.DURATION_8, SongElement.NOTE_E,
+    SongElement.DURATION_4, SongElement.NOTE_C
+]
 
 def check_connected(func):
     @functools.wraps(func)
@@ -17,7 +35,7 @@ def check_connected(func):
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s - %(levelname)s]:\n\t%(message)s')
 
 class MAVSDKController:
-    def __init__(self, system_address="udpin://0.0.0.0:14540", port=50050, connection_timeout=100):
+    def __init__(self, system_address="udpin://0.0.0.0:14540", port=50060, connection_timeout=100):
         self.mavsdk = System(
             port=port
         )
@@ -59,8 +77,10 @@ class MAVSDKController:
         Drone ile bağlantı kurar.
         """
         try:
-            await self.mavsdk.connect(
-                system_address=self.connection_url)
+            if self.is_connected:
+                logging.info("Drone zaten bağlı.")
+                return
+            await self.mavsdk.connect(system_address=self.connection_url)
             if await self.wait_for_connection():
                 self.is_connected = True
                 logging.info(f"{self.connection_url} adresine bağlanıldı.")
@@ -291,6 +311,21 @@ class MAVSDKController:
             logging.info("Drone bağlantısı kesildi.")
         else:
             logging.warning("Drone zaten bağlı değil.")
+
+    async def play_tune(self, tune_name):
+        """
+        Belirtilen melodiyi çalar.
+        """
+        tune = None
+        if tune_name == "success":
+            tune = success_tune
+        elif tune_name == "fail":
+            tune = fail_tune
+
+        if tune is not None:
+            await self.mavsdk.tune.play_tune(TuneDescription(song_elements=tune, tempo=90))
+        else:
+            logging.error(f"Geçersiz melodi adı: {tune_name}")
 
 async def main():
     """

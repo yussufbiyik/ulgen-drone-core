@@ -7,7 +7,7 @@ from core.drone import Drone
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s')
 
 class Step:
-    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None):
+    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None, is_neighbor_dependant=True):
         """
         Adım sınıfı.
 
@@ -19,13 +19,15 @@ class Step:
         isRequired (bool, optional): Adımın gerekli olup olmadığını belirler. Varsılan False.
         timeout (int, optional): Adımın zaman aşımı süresi (milisaniye cinsinden). Varsayılan None.
         """
+        self.is_completed = False
+
         self.name = name
         self.function = function
         self.checkFunction = checkFunction
         self.preCheckFunction = preCheckFunction
-        self.is_completed = False
         self.isRequired = isRequired
         self.timeout = timeout
+        self.is_neighbor_dependant = is_neighbor_dependant
 
 class StepController:
     def __init__(self, drone: Drone):
@@ -45,12 +47,24 @@ class StepController:
         self.steps.append(step)
         logging.info(f"Adım eklendi: {step.name}")
 
+    def abort_steps(self):
+        """
+        Tüm adımları iptal eder.
+        """
+        logging.info("Tüm adımlar iptal ediliyor...")
+        for step in self.steps:
+            step.is_completed = False
+        self.is_all_done = True
+
     async def run_steps(self):
         """
         Adımları sırayla çalıştırır.
         """
         logging.info("Adımlar çalıştırılıyor...")
         for step in self.steps:
+            if self.is_all_done:
+                logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
+                break
             step_index = self.steps.index(step) + 1
             self.active_step = step_index
             self.drone.mission_info["current_step"]["index"] = step_index
@@ -78,25 +92,30 @@ class StepController:
                 self.drone.mission_info["current_step"]["status"] = 1
                 logging.info(f"Adım {step.name} başarıyla tamamlandı.")
                 # Diğer dronları bekle
-                if self.wait_for_neighbors:
+                if self.wait_for_neighbors and step.is_neighbor_dependant:
                     logging.info("Diğer dronların adımı tamamlaması bekleniyor...")
                     while True:
                         drones_to_wait = [
                             neighbor
                             for neighbor in self.drone.neighbors
                             if (neighbor["data"]["mission"]["current_step"]["index"] == step_index
-                            and neighbor["data"]["mission"]["current_step"]["status"] == 0)
-                            or neighbor["data"]["mission"]["current_step"]["index"] < step_index
+                            and neighbor["data"]["mission"]["current_step"]["status"] == 0 and neighbor["data"]["is_formation_drone"])
+                            or (neighbor["data"]["mission"]["current_step"]["index"] < step_index and neighbor["data"]["is_formation_drone"])
                         ]
                         if len(drones_to_wait) == 0:
                             break
                         logging.debug(f"Komşu drone {len(drones_to_wait)} tane drone henüz {step_index}. adımı tamamlamadı, bekleniyor...")
                         await asyncio.sleep(0.1)
+                await self.drone.mavsdk_controller.play_tune("success")
             except Exception as e:
                 logging.exception(f"Adım {step.name} sırasında hata oluştu: {e}")
-                self.drone.mission_info["current_step"]["status"] = 2
+                logging.info("Acil iniş yapılıyor!")
+                self.drone.mission_info["current_step"]["status"] = 2 # Görevi hatalı olarak işaretle
                 step.is_completed = False
-        logging.info("Tüm adımlar başarıyla tamamlandı.")
+                await self.drone.mavsdk_controller.play_tune("fail")
+                await self.drone.mavsdk_controller.mavsdk.action.land()
+                break
+        logging.info(f"Görev bitti, {'başarıyla' if self.is_all_done else 'başarısızlıkla'} tamamlandı.")
         self.is_all_done = True
         return self.is_all_done
 

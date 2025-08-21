@@ -24,23 +24,36 @@ logging.info(f"Sunucu {SERVER_IP}:{SERVER_PORT} üzerinde dinliyor")
 def handle_message(data, addr):
     # Ham veriyi json'a dönüştür, decode hatalarını yok say
     raw_data_str = json.loads(data.decode(errors='ignore'))
-    id = raw_data_str.get("sender", None)
+    sender_id = raw_data_str.get("sender", None)
+    
+    # Yeni client ekle
     if addr not in clients:
-        clients[addr] = id
-        logging.info(f"Yeni drone bağlandı {addr}, ID atandı: {id}")
+        clients[addr] = sender_id
+        logging.info(f"Yeni drone bağlandı {addr}, ID atandı: {sender_id}")
 
     broadcast_msg = {
-        "sender": id,
+        "sender": sender_id,
         "timestamp": time.time(),
         "data": raw_data_str.get("data", "")
     }
 
     broadcast_data = json.dumps(broadcast_msg).encode()
 
-    # Gönderen hariç tüm drone'lara gönder
-    for client_addr in clients:
-        if client_addr != addr:
-            sock.sendto(broadcast_data, client_addr)
+    target_id = raw_data_str.get("target", None)
+    if target_id:
+        # Belirtilen target ID'ye mesaj gönder
+        for client_addr, client_id in clients.items():
+            if client_id == target_id:
+                sock.sendto(broadcast_data, client_addr)
+                logging.info(f"Mesaj {sender_id} → {target_id} gönderildi")
+                break
+        else:
+            logging.warning(f"Target ID {target_id} bulunamadı")
+    else:
+        # Gönderen hariç tüm drone'lara gönder
+        for client_addr in clients:
+            if client_addr != addr:
+                sock.sendto(broadcast_data, client_addr)
 
 while True:
     data, addr = sock.recvfrom(1024)

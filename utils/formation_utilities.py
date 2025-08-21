@@ -15,8 +15,8 @@ def calculate_formation_positions(formation_type, d):
     elif formation_type == "ok":
         return [
             (0, 0),           # merkez (uç)
-            (-d/2, h),       # sol kanat
-            (d/2, h)         # sağ kanat
+            (-d/2, h),        # sol kanat
+            (d/2, h)          # sağ kanat
         ]
 
 def distance_meters(pos1, pos2):
@@ -76,6 +76,10 @@ def calculate_formation_weight_center(self_position, neighbors):
     """
     if not neighbors:
         return self_position
+    if not neighbors:
+        logging.debug("Aktif komşu drone bulunamadı.")
+        return self_position
+
     total_lat = self_position["latitude"]
     total_lon = self_position["longitude"]
     count = 1 
@@ -108,30 +112,67 @@ def calculate_ideal_formation_positions(formation_type, center_position, d):
 
 def assign_position(formation_positions, current_position, drone_id, neighbors=[]):
     """
-    Verilen formasyon pozisyonlarından boş olup en kısa mesafede olanı döndürür.
+    Her adımda tüm dronlar ve pozisyonlar arasındaki en kısa mesafeyi bulur, 
+    o drona o pozisyonu atar, sonra tekrar eder.
     """
-    available_positions = copy.deepcopy(formation_positions)
-    all_drones = sorted([
+    # Tüm drone bilgilerini topla
+    drones = [
         {"sender": drone_id, "data": {"gps_position": current_position}},
         *neighbors
-    ], key=lambda drone: int(drone["sender"]))
+    ]
+
+    available_positions = copy.deepcopy(formation_positions)
+    available_drones = drones.copy()
     assignments = {}
-    sorted_positions = sorted([
-        {"latitude": pos['latitude'], "longitude": pos['longitude']}
-        for pos in available_positions
-    ], key=lambda pos: pos['latitude'] + pos['longitude'])
-    for position in sorted_positions:
-        closest_drone = None
-        closest_drone = min(
-            all_drones,
-            key=lambda drone: (
-                distance_meters(drone["data"]["gps_position"], position)
-            )
+
+    while available_positions and available_drones:
+        # Tüm (drone, position) çiftleri için mesafeyi hesapla
+        all_pairs = [
+            (drone, pos, distance_meters(drone["data"]["gps_position"], pos))
+            for drone in available_drones
+            for pos in available_positions
+        ]
+        # Mesafeye göre en küçük çifti seç (eşitlikte drone ID küçük olana ver)
+        drone, pos, dist = min(
+            all_pairs,
+            key=lambda x: (x[2], int(x[0]["sender"]))
         )
-        logging.debug(f"Dron {closest_drone['sender']} için en yakın pozisyon: {position}, mesafe: {distance_meters(closest_drone['data']['gps_position'], position)}")
-        assignments[closest_drone["sender"]] = position
-        all_drones.remove(closest_drone)
-    closest_position = assignments[drone_id]
-    logging.info(f"Dron {drone_id} için en yakın pozisyon: {closest_position}")
-    return closest_position, assignments
-    
+
+        assignments[drone["sender"]] = pos
+        logging.debug(
+            f"Drone {drone['sender']} için seçilen pozisyon: {pos}, mesafe: {dist}"
+        )
+
+        # Kullanılan dronu ve pozisyonu listeden çıkar
+        available_drones.remove(drone)
+        available_positions.remove(pos)
+
+    my_position = assignments[drone_id]
+    logging.info(f"Drone {drone_id} için atanan pozisyon: {my_position}")
+    return my_position, assignments
+
+def rotate_position(d_n, d_e, angle):
+    """
+    Verilen NED cinsi konumu belirtilen açı kadar döndürür.
+    """
+    theta = math.radians(angle)
+    xr = d_n * math.cos(theta) - d_e * math.sin(theta)
+    yr = d_n * math.sin(theta) + d_e * math.cos(theta)
+    return xr, yr
+
+def wrap_number_in_range(number, range):
+    """
+    Verilen sayıyı belirtilen aralığa sınırlar.
+    """
+    while number > 180:
+        number -= 360
+    while number < -180:
+        number += 360
+    return number
+
+def angle_between(position1, position2):
+    """
+    İki konum arasındaki açıyı hesaplar.
+    """
+    d_north, d_east, _, _ = get_distances_and_angles(position1, position2)
+    return math.degrees(math.atan2(d_east, d_north))

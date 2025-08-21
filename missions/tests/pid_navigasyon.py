@@ -32,15 +32,14 @@ async def sleep_for_check(milliseconds):
     
 class UcusKanitMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("KTR Video", drone, **kwargs)
+        super().__init__("PID Uçuş Kanıt", drone, **kwargs)
         self.drone_controller = drone_controller
 
     async def run(self):
         # Görev modül olarak çağırıldığında
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         hold_time = self.parameters.get("hold_time", 100.0)
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
-        logging.info("KTR Video görevi başlatılıyor...")
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
@@ -56,8 +55,9 @@ class UcusKanitMission(Mission):
         self.step_controller.add_step(
             Step("Offboard Moda Geç",
                 self.drone_controller.enable_offboard_controller, 
-                self.drone_controller.enable_offboard_controller_check)
+                self.drone_controller.enable_offboard_controller_check
             )
+        )
         # Hedef noktalara ilerle
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"
@@ -76,6 +76,12 @@ class UcusKanitMission(Mission):
                 )
             )
             logging.info(f"{step_name} adımı eklendi.")
+        self.step_controller.add_step(
+                Step("Offboard Modu Kapat",
+                    self.drone_controller.disable_offboard_controller,
+                    self.drone_controller.disable_offboard_controller_check
+                )
+            )
         # Hedef konumlara ulaşıldıktan sonra zemine in
         # Kontrol fonksiyonu olarak altitude_check fonksiyonu kullanılabilir
         self.step_controller.add_step(Step("Land", self.drone_controller.land,
@@ -90,19 +96,19 @@ class UcusKanitMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_port = "/dev/ttyUSB0"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
     if not isTesting:
         xbee_controller = XBeeController(
-            port=xbee_port(),
+            port=xbee_port,
             message_received_callback=None # Başlangıçta None, daha sonra DroneController __init__ kısmında tanımlanacak
         )
     drone = Drone(

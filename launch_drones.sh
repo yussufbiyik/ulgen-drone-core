@@ -19,10 +19,6 @@ if [ ! -f "$PX4_BIN" ]; then
   exit 1
 fi
 
-# Log klasörü
-LOG_DIR="$HOME/drone_logs"
-mkdir -p "$LOG_DIR"
-
 # Port başlangıç değerleri
 BASLANGIC_MAVLINK_PORT=14540       # PX4 MAVLink UDP portu (dinleme)
 BASLANGIC_MAVSDK_REMOTE_PORT=14540 # mavsdk_server'ın dinleyeceği UDP portu
@@ -31,6 +27,23 @@ BASLANGIC_MAVSDK_TCP_PORT=50060    # mavsdk_server TCP portu (Python için)
 # PID dizileri
 PX4_PIDS=()
 MAVSDK_PIDS=()
+
+# Disable logging için gerekli klasör yapısını oluştur
+for (( i=0; i<$DRONE_SAYISI; i++ ))
+do
+  ROOTFS_DIR="$HOME/PX4-Autopilot/build/px4_sitl_default/rootfs/$i"
+  mkdir -p "$ROOTFS_DIR/fs/microsd/etc/logging"
+  # Boş logger_topics.txt dosyası oluştur (hiçbir topic loglanmasın)
+  echo "" > "$ROOTFS_DIR/fs/microsd/etc/logging/logger_topics.txt"
+  
+  # config.txt ile logger'ı devre dışı bırak
+  mkdir -p "$ROOTFS_DIR/etc"
+  cat > "$ROOTFS_DIR/etc/config.txt" << EOF
+param set-default SDLOG_MODE 0
+param set-default SDLOG_BOOT 0
+logger stop
+EOF
+done
 
 echo "🚁 $DRONE_SAYISI drone başlatılıyor..."
 
@@ -59,7 +72,7 @@ do
   PX4_GZ_MODEL_POSE="0,$Y_OFFSET" \
   MAV_0_UDP_PRT=$MAVLINK_PORT \
   MAV_0_REMOTE_PRT=$PX4_REMOTE_PORT \
-  $PX4_BIN -i $i > "$LOG_DIR/px4_sitl_$i.log" 2>&1 &
+  $PX4_BIN -i $i > /dev/null 2>&1 &
 
   PX4_PID=$!
   PX4_PIDS+=($PX4_PID)
@@ -98,7 +111,7 @@ temizlik() {
   done
 
   echo "virtual_communication.py PID $VIRTUAL_COMM_PID sonlandırılıyor..."
-kill -9 $VIRTUAL_COMM_PID 2>/dev/null
+  kill -9 $VIRTUAL_COMM_PID 2>/dev/null
 
   echo "✅ Tüm işlemler başarıyla sonlandırıldı. Görüşmek üzere!"
   exit 0

@@ -40,6 +40,8 @@ class Mission:
         Görevi başlatır. Adımları kodda eklendikleri sırayla çalıştırır.
         Görev bitince konsola verileri yazar.
         """
+        # Görev modül olarak çağırıldığında
+        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         logging.info(f"{self.name} görevi başlatılıyor...")
         start_time = time.time() * 1000
         self.status["is_running"] = True
@@ -55,10 +57,19 @@ class Mission:
         finally:
             end_time = time.time() * 1000
             self.status["is_running"] = False
-            isSuccess = self.status["error"] is None
-            log_message = f"{self.name} görevi {'başarıyla' if isSuccess else 'hatalı olarak'} tamamlandı."
+            isSuccess = True if self.status["error"] is None else False
+            log_message = f"{self.name} görevi {'başarıyla' if isSuccess else 'hatalı şekilde'} tamamlandı."
             if isSuccess:
                 logging.info(log_message)
             else:
                 logging.error(log_message)
             logging.info(f"Görevin tamamlanma süresi: {end_time - start_time:.2f} ms")
+
+    def abort(self):
+        """
+        Görevi iptal eder.
+        """
+        logging.info(f"{self.name} görevi iptal ediliyor...")
+        self.status["is_running"] = False
+        self.status["error"] = "Görev iptal edildi."
+        self.step_controller.abort_steps()

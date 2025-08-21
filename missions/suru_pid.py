@@ -38,29 +38,25 @@ async def print_message(message):
     """
     logging.info(message)
 
-class FormasyonMission(Mission):
+class SuruNavigasyonMission(Mission):
     def __init__(self, drone: Drone, drone_controller: DroneController, **kwargs):
-        super().__init__("Formasyon Navigasyon", drone, **kwargs)
+        super().__init__("Sürü PID Navigasyon", drone, **kwargs)
         self.drone_controller = drone_controller
         self.step_controller.wait_for_neighbors = True
-        self.drone.mavsdk_controller.mavsdk.action.set_current_speed(self.drone.speed_limit)
 
     async def run(self):
-        # Görev modül olarak çağırıldığında
-        # Dronun tüm bağlantılarının ideal olduğu varsayılır.
         # Parametreleri Al
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 10.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0) + self.drone.pre_takeoff_location["altitude"]
-
-        logging.info("Formasyon navigasyon görevi başlatılıyor...")
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
-        # Arm et
-        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Kalkış öncesi konumu ayarla
         self.step_controller.add_step(Step("Kalkış Öncesi Konumu Ayarla", self.drone_controller.set_pre_takeoff_location, self.drone_controller.pre_takeoff_location_check))
+        # Arm et
+        self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Takeoff yap
         self.step_controller.add_step(
             Step("Takeoff",
@@ -85,20 +81,13 @@ class FormasyonMission(Mission):
         # Bir süre formasyonda kal
         self.step_controller.add_step(formation_hold_step(formasyon_suresi))
         # Formasyon ile konuma ilerle
+        self.step_controller.add_step(
+            Step("Offboard Moda Geç",
+                self.drone_controller.enable_offboard_controller, 
+                self.drone_controller.enable_offboard_controller_check)
+            )
         for i, target_location in enumerate(self.parameters.get("target_locations", [])):
             step_name = f"{i+1} Numaralı Hedefe İlerle"
-            self.step_controller.add_step(
-                Step(
-                    "Açıyı Düzelt",
-                    lambda loc=target_location: self.drone_controller.rotate_formation(loc),
-                    lambda loc=target_location: self.drone_controller.rotate_formation_check(loc)
-                )
-            )
-            self.step_controller.add_step(
-                Step("Offboard Moda Geç",
-                    self.drone_controller.enable_offboard_controller, 
-                    self.drone_controller.enable_offboard_controller_check)
-                )
             self.step_controller.add_step(
                 Step(
                     step_name, 
@@ -124,13 +113,13 @@ class FormasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = True
-    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
+    isTesting = False
+    mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" # if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
         port=50060+sim_instance,
     )
-    xbee_port = lambda: None if isTesting else "/dev/ttyUSB0"
+    xbee_port = lambda: f"/dev/ttyUSB{sim_instance}"
     xbee_controller = None
     # XBeeController test modunda None olarak ayarlanır, gerçek port kullanılmaz
     # Eğer test modunda değilsek, XBeeController'ı tanımlarız
@@ -147,7 +136,8 @@ async def main(sim_instance=0):
     drone.waypoint_threshold = 0.5
     drone_controller = DroneController(drone)
     takeoff_altitude = 10.0
-    target_locations2 = [
+
+    sim_locations = [
         {
             "latitude": 47.397970,
             "longitude": 8.546641,
@@ -164,20 +154,20 @@ async def main(sim_instance=0):
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
-    target_locations1 = [
+    real_locations = [
         {
-            "latitude": 40.326037, 
-            "longitude": 36.473655,
+            "latitude": 40.325736,
+            "longitude": 36.473413,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325634,
-            "longitude": 36.473806,
+            "latitude": 40.325749,
+            "longitude": 36.473801,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 40.325428,
-            "longitude": 36.473451,
+            "latitude": 40.325495,
+            "longitude": 36.473798,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
@@ -187,11 +177,11 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, 
-                                    takeoff_altitude=takeoff_altitude, 
-                                    target_locations=target_locations2, 
-                                    user_selected_formation_type="v", 
-                                    formation_distance=10.0, 
+    mission = SuruNavigasyonMission(drone, drone_controller,
+                                    takeoff_altitude=takeoff_altitude,
+                                    target_locations=sim_locations if isTesting else real_locations,
+                                    user_selected_formation_type="v",
+                                    formation_distance=10.0,
                                     formation_duration=5000
                                 )
     await mission.run()

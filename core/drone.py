@@ -27,10 +27,10 @@ def format_broadcast_message(message):
     is_armed = 1 if message["armed"] else 0
     flight_mode = message["flight_mode"]
     battery = int(message["battery"])
-    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f},{format(message['gps_position']['altitude'], '.4f')}"
-    velocity = f"{message['velocity']['north']},{message['velocity']['east']},{message['velocity']['down']}"
-    mission = f"{message['mission']['current_step']['index']},{message['mission']['current_step']['status']}"
-    new_message = f"{is_armable},{is_armed},{flight_mode},{battery},{gps_string},{mission}"
+    gps_string = f"{message['gps_position']['latitude']:.6f},{message['gps_position']['longitude']:.6f}".replace('.', '')
+    velocity = f"{message['velocity']['north']:.1f},{message['velocity']['east']:.1f},{message['velocity']['down']:.1f}".replace('.', '')
+    mission = f"{message['mission']['current_step']['index']}{message['mission']['current_step']['status']}"
+    new_message = f"{gps_string},{mission}"
     logging.debug(f"Broadcast mesajı hazırlandı: {new_message}")
     return new_message
 
@@ -43,20 +43,18 @@ SERVER_PORT = 5005
 class Drone:
     def __init__(self, xbee_controller: XBeeController, mavsdk_controller: MAVSDKController, isTesting=False):
         self.isTesting = isTesting
-
         # Test modunda soket üzerinden iletişim kurmak için
         self.socket = None
         self.fake_id = random.randint(10000, 99999) if isTesting else None
         # XBee
         self.xbee_controller = xbee_controller
-        self.xbee_id = self.xbee_controller.address if not self.isTesting else self.fake_id
+        self.xbee_id = self.xbee_controller.address if self.xbee_controller else self.fake_id
         # MAVSDK
         self.mavsdk_controller = mavsdk_controller
         
         if not self.isTesting:
-            self.xbee_controller.message_received_callback = self.handle_message_received
-            self.xbee_controller.listen()
-            logging.info("XBee iletişimi başlatıldı.")
+            self.xbee_controller.subscribe(self.handle_message_received)
+            logging.info("XBee mesajlarına abone olundu.")
         else:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             threading.Thread(target=self.listen_to_socket).start()
@@ -67,7 +65,8 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 3.0  # m/s olarak varsayılan hız sınırı
+        self.altitude_target = 0.0  # m olarak varsayılan irtifa hedefi
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
         self.offboard_status = {
@@ -75,16 +74,20 @@ class Drone:
             "altitude_to_keep": 0.0,
             "target_position": None,
             "navigation_method": "pid", # "standard" veya "pid"
+            "is_on_target": False,
         }
         # Formasyon için gerekli değişkenler
-        self.formation_position = None
-        self.formation_weight_center = None
-        self.formation_type = None
-        self.formation_distance = None
-        self.neighbor_formation_positions = []
+        self.formation = {
+            "position": None,
+            "weight_center": None,
+            "type": None,
+            "distance": None,
+            "neighbor_positions": [],
+            "leave": False
+        }
         self.mission_info = {
             "current_step": {
-                "index": None,
+                "index": 0,
                 "status": 0
             }
         }
@@ -93,9 +96,15 @@ class Drone:
             Kp=0.45, Ki=0.005, Kd=0.1,
             max_output=self.speed_limit, min_output=-self.speed_limit, error_threshold=self.waypoint_threshold
         )
+        # Dikey eksen için PID kontrolcüsü
+        self.pid_d = PID(
+            Kp=0.20, Ki=0.0005, Kd=0.05,
+            max_output=0.5, min_output=-0.5, error_threshold=self.waypoint_threshold
+        )
         self.apf = APF()
         
         self.neighbors = []
+        self.inactive_neighbors = []
 
     # XBee ve simülasyon içi iletişim ile alakalı işlemler
     def listen_to_socket(self):
@@ -117,31 +126,30 @@ class Drone:
         """
         sender = message["sender"]
         message_data = message['data'].split(',')
-        if len(message_data) < 7:
+        if len(message_data) < 3:
             logging.warning("Mesaj verisi eksik, geçiliyor.")
             return
         neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
+        gps_position = {
+            "latitude": int(float(message_data[0]))/10**6,
+            "longitude": int(float(message_data[1]))/10**6,
+        }
+        mission = {
+            "current_step": {
+                "index": int(message_data[2][:-1]),
+                "status": int(message_data[2][-1]),
+            }
+        }
         if not neighbor:
             logging.info(f"Yeni komşu drone bulundu: {sender}, ekleniyor...")
             message_data = {
                 "sender": sender,
                 "timestamp": message["timestamp"],
                 "data": {
-                    "armable": bool(int(message_data[0])),
-                    "armed": bool(int(message_data[1])),
-                    "flight_mode": int(message_data[2]),
-                    "battery": int(message_data[3]),
-                    "gps_position": {
-                        "latitude": float(message_data[4]),
-                        "longitude": float(message_data[5]),
-                        "altitude": float(message_data[6])
-                    },
-                    "mission": {
-                        "current_step": {
-                            "index": int(message_data[7]),
-                            "status": int(message_data[8]),
-                        }
-                    },
+                    "gps_position": gps_position,
+                    "mission": mission,
+                    "is_synced": True,
+                    "is_formation_drone": True
                 }
             }
             self.neighbors.append(message_data)
@@ -149,17 +157,8 @@ class Drone:
         else:
             logging.debug(f"{sender} zaten mevcut:, güncelleniyor ({(message['timestamp'] - time.time()):.2f}ms).")
             data = neighbor["data"]
-            gps = data["gps_position"]
-            mission_step = data["mission"]["current_step"]
-            data["armable"] = bool(int(message_data[0]))
-            data["armed"] = bool(int(message_data[1]))
-            data["flight_mode"] = int(message_data[2])
-            data["battery"] = int(message_data[3])
-            gps["latitude"] = float(message_data[4])
-            gps["longitude"] = float(message_data[5])
-            gps["altitude"] = float(message_data[6])
-            mission_step["index"] = int(message_data[7])
-            mission_step["status"] = int(message_data[8])
+            data["gps_position"] = gps_position
+            data["mission"]["current_step"] = mission["current_step"]
 
     def process_mission_message(self, message):
         """
@@ -171,22 +170,62 @@ class Drone:
             logging.warning(f"Komşu drone bulunamadı: {sender}, mesaj işlenemiyor.")
             return
         message_data = message['data'].split(',')
-        if message_data[1] == "t":
-            # Formasyon konumuna gitme mesajı
-            if len(message_data) < 3:
-                logging.warning("Formasyon konumu mesajı eksik, geçiliyor.")
+        if message_data[0] == "mt":
+            # Konuma gitme mesajı
+            if len(message_data) < 2:
+                logging.warning("Konum mesajı eksik, geçiliyor.")
                 return
-            latitude = float(message_data[2])
-            longitude = float(message_data[3])
+            latitude = int(message_data[1])/10**6
+            longitude = int(message_data[2])/10**6
             neighbor["data"]["target_position"] = {
                 "latitude": latitude,
                 "longitude": longitude
             }
-            # neighbor["data"]["target_status"] = bool(int(message_data[4]))
             logging.debug(f"{sender} drone'u, {latitude}, {longitude} hedef konumuna gidiyor.")
-        elif message_data[1] == "ts":
-            neighbor["data"]["target_status"] = bool(int(message_data[2]))
+        elif message_data[0] == "mts":
+            neighbor["data"]["target_status"] = int(message_data[1])
             logging.debug(f"{sender} drone'u, formasyon hesaplarını tamamladı.")
+        elif message_data[0] == "mf0":
+            self.neighbors.remove(neighbor)
+            self.inactive_neighbors.append(neighbor)
+            logging.debug(f"{sender} drone'u, formasyon dışı olarak işaretlendi.")
+        elif message_data[0] == "mf1":
+            self.inactive_neighbors.remove(neighbor)
+            self.neighbors.append(neighbor)
+            neighbor["data"]["is_formation_drone"] = True
+            logging.debug(f"{sender} drone'u, formasyona dahil edildi.")
+        elif message_data[0] == "mh1":
+            neighbor["data"]["is_home"] = True
+            logging.debug(f"{sender} drone'u, ev konumuna döndü.")
+        elif message_data[0] == "ms1":
+            self.inactive_neighbors.remove(neighbor)
+            self.neighbors.append(neighbor)
+            neighbor["data"]["is_synced"] = False
+            neighbor["data"]["is_formation_drone"] = True
+            logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
+
+    def process_formation_message(self, message):
+        """
+        Diğer dronlardan gelen formasyon mesajlarını işler.
+        """
+        message_data = message['data'].split(',')
+        print(message_data)
+        if message_data[0] == "fl":
+            # Formasyondan çıkma mesajı
+            message_subject = int(message_data[1], 16)
+            if self.xbee_id == message_subject:
+                logging.debug("Formasyondan çıkış emri verildi, iniş yapılacak.")
+                self.formation["leave"] = True
+            else:
+                neighbor = next((n for n in self.neighbors if n["sender"] == message_subject), None)
+                neighbor["data"]["leave"] = True
+        elif message_data[0] == "fj":
+            # Formasyona katılma mesajı
+            sender = message["sender"]
+            if self.xbee_id == sender:
+                return
+            neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
+            neighbor["data"]["leave"] = False
 
     def handle_message_received(self, recieved_message):
         """
@@ -195,7 +234,6 @@ class Drone:
         :param message: XBee'den alınan mesaj
         """
         # Örnek data
-        # 1,1,6,50,47.3977058,8.5460053,1.3350
         sender = recieved_message["sender"]
         if not sender:
             logging.error(f"Mesajın göndereni belirtilmemiş, geçiliyor.")
@@ -209,26 +247,91 @@ class Drone:
         is_drone_status_message = message_raw[0].isdigit()
         if is_drone_status_message and int(message_raw[0]):
             self.process_drone_status_message(recieved_message)
-        elif message_raw[0] == "m":
+        elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
+            self.send_private_message(sender, "ACK")
+        elif message_raw[0].startswith("f"):
+            self.process_formation_message(recieved_message)
+        elif message_raw[0] == "ACK":
+            sender_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == sender), None)
+            if sender_in_neighbor_list:
+                logging.info(f"{sender} ID'li drondan, ACK mesajı alındı ve güncellendi.")
+                sender_in_neighbor_list["data"]["acknowledged"] = True
 
-    async def broadcast_message(self, message):
+    def broadcast_message(self, message):
         """
         Drondan bir mesaj broadcast eder.
 
         :param message: Broadcast edilecek mesaj
         """
         if self.isTesting:
-            test_message = json.dumps({
+            message = json.dumps({
                 "sender": self.fake_id,
                 "data": message,
             })
             self.socket.sendto(
-                test_message.encode('utf-8'),
+                message.encode('utf-8'),
                 (SERVER_IP, SERVER_PORT)
             )
         else:
             self.xbee_controller.send_broadcast_message(message)
+
+    def send_private_message(self, receiver, message):
+        """
+        Drondan bir mesaj özel olarak gönderir.
+
+        :param receiver: Mesajın gönderileceği alıcı
+        :param message: Gönderilecek mesaj
+        """
+        if self.isTesting:
+            message = json.dumps({
+                "sender": self.fake_id,
+                "target": receiver,
+                "data": message,
+            })
+            self.socket.sendto(
+                message.encode('utf-8'),
+                (SERVER_IP, SERVER_PORT)
+            )
+        else:
+            self.xbee_controller.send_private_message(receiver, message)
+
+    async def send_message_with_ack(self, message):
+        """
+        Drondan bir mesajı broadcast eder, teslim alındığının onayını bekler (ACK), 
+        teslim almamış olan dronlara da mesajı tekrar gönderir.
+
+        :param receiver: Mesajın gönderileceği alıcı
+        :param message: Gönderilecek mesaj
+        """
+        if self.isTesting:
+            message = json.dumps({
+                "sender": self.fake_id,
+                "data": message,
+            })
+            self.socket.sendto(
+                message.encode('utf-8'),
+                (SERVER_IP, SERVER_PORT)
+            )
+        else:
+            self.xbee_controller.send_broadcast_message(message)
+        while True:
+            not_acknowledged_drones = [
+                neighbor for neighbor in self.neighbors
+                if not neighbor["data"].get("acknowledged", False)
+            ]
+            # Bu kontrol tamamlanınca ACK işlemleri için değer false verilir ki,
+            # sonraki ACK kontrolünde tüm değerler True olup hatalı sonuç vermesin
+            if len(not_acknowledged_drones) == 0:
+                logging.info("Tüm dronlar mesajı aldı.")
+                for drone in not_acknowledged_drones:
+                    drone_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == drone["sender"]), None)
+                    drone_in_neighbor_list["data"]["acknowledged"] = False
+                return
+            else:
+                for drone in not_acknowledged_drones:
+                    self.send_private_message(drone["sender"], message)
+            await asyncio.sleep(1.5 + random.uniform(0, 0.5))
 
     async def broadcast_drone_status(self):
         """
@@ -273,7 +376,7 @@ class Drone:
                         continue
                     self.xbee_controller.send_broadcast_message(message)
             except Exception as e:
-                logging.error(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
+                logging.exception(f"Broadcast mesajı gönderilirken hata oluştu: {e}")
                 continue
             logging.debug(f"Güncel durum broadcast edildi: {message}")
-            await asyncio.sleep(1.5)  # Her 1.5 saniyede bir güncel durumu broadcast et
+            await asyncio.sleep(1.5 + random.uniform(0, 0.5))  # Her 1.5-2 saniyede bir güncel durumu broadcast et

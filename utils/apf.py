@@ -2,7 +2,7 @@ import logging
 from utils.formation_utilities import distance_meters, latlon_to_ned
 
 class APF:
-    def __init__(self, repulsive_gain=0.000005, influence_radius=1.0, weight=0.1):
+    def __init__(self, repulsive_gain=0.000025, influence_radius=2.0):
         """
         :param repulsive_gain: İtme kuvveti katsayısı
         :param influence_radius: Komşuları dikkate almak için maksimum mesafe (metre)

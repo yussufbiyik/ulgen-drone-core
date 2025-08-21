@@ -7,11 +7,11 @@ import inspect
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Run main() from a testable module (supports sync & async)."
+        description="Test edilebilir bir modülün main() fonksiyonunu çalıştırır."
     )
     parser.add_argument(
         "module",
-        help="Modül konumu: <klasör>.<modül> (örn. controllers.drone_controller)",
+        help="Modül konumu: <klasör>.<modül> (örn. missions.formasyon)",
     )
     parser.add_argument(
         "sim_instance",
