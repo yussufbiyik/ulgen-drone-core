@@ -58,7 +58,6 @@ class SuruNavigasyonMission(Mission):
         # Arm et
         self.step_controller.add_step(Step("Arm Et", self.drone_controller.arm, self.drone_controller.arm_check))
         # Takeoff yap
-        print(takeoff_altitude)
         self.step_controller.add_step(
             Step("Takeoff",
                  lambda: self.drone_controller.takeoff(takeoff_altitude),

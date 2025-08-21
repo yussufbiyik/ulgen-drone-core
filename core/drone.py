@@ -82,7 +82,8 @@ class Drone:
             "weight_center": None,
             "type": None,
             "distance": None,
-            "neighbor_positions": []
+            "neighbor_positions": [],
+            "leave": False
         }
         self.mission_info = {
             "current_step": {
@@ -147,8 +148,7 @@ class Drone:
                 "data": {
                     "gps_position": gps_position,
                     "mission": mission,
-                    "is_on_position": False,
-                    "is_home": False,
+                    "is_synced": True,
                     "is_formation_drone": True
                 }
             }
@@ -200,9 +200,32 @@ class Drone:
         elif message_data[0] == "ms1":
             self.inactive_neighbors.remove(neighbor)
             self.neighbors.append(neighbor)
-            neighbor["data"]["is_on_position"] = True
+            neighbor["data"]["is_synced"] = False
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
+
+    def process_formation_message(self, message):
+        """
+        Diğer dronlardan gelen formasyon mesajlarını işler.
+        """
+        message_data = message['data'].split(',')
+        print(message_data)
+        if message_data[0] == "fl":
+            # Formasyondan çıkma mesajı
+            message_subject = int(message_data[1], 16)
+            if self.xbee_id == message_subject:
+                logging.debug("Formasyondan çıkış emri verildi, iniş yapılacak.")
+                self.formation["leave"] = True
+            else:
+                neighbor = next((n for n in self.neighbors if n["sender"] == message_subject), None)
+                neighbor["data"]["leave"] = True
+        elif message_data[0] == "fj":
+            # Formasyona katılma mesajı
+            sender = message["sender"]
+            if self.xbee_id == sender:
+                return
+            neighbor = next((n for n in self.neighbors if n["sender"] == sender), None)
+            neighbor["data"]["leave"] = False
 
     def handle_message_received(self, recieved_message):
         """
@@ -227,6 +250,8 @@ class Drone:
         elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
             self.send_private_message(sender, "ACK")
+        elif message_raw[0].startswith("f"):
+            self.process_formation_message(recieved_message)
         elif message_raw[0] == "ACK":
             sender_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == sender), None)
             if sender_in_neighbor_list:

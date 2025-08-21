@@ -18,7 +18,7 @@ from missions.formasyon_normal import FormasyonMission as FormasyonNormal
 from missions.formasyon_pid import FormasyonMission as FormasyonPID
 from missions.suru_normal import SuruNavigasyonMission as SuruNavigasyonNormal
 from missions.suru_pid import SuruNavigasyonMission as SuruNavigasyonPID
-from missions.birey_ekle_cikar import BireyEkleCikarMission
+from missions.birey_ekle_cikar_3_dron import BireyEkleCikar3DroneMission as BireyEkleCikarMission
 
 # Test Görevleri
 from missions.tests.pid_navigasyon import UcusKanitMission
@@ -91,13 +91,9 @@ class DroneService:
             print("ned")
             swarm_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
             ref_lat, ref_lon = swarm_center["latitude"], swarm_center["longitude"]
-            print(len(locations_raw))
             for index in range(0, len(locations_raw), 2):
-                print(index)
                 if index + 1 >= len(locations_raw):
-                    print("geçiliyor...")
                     break
-                print("hesaplanıyor...")
                 north_offset = float(locations_raw[index])
                 east_offset = float(locations_raw[index+1])
                 lat, lon = ned_to_latlon(north_offset, east_offset, ref_lat, ref_lon)
@@ -190,14 +186,26 @@ class DroneService:
                     self.drone, self.drone_controller,
                     takeoff_altitude=takeoff_altitude,
                     formasyon_suresi=hold_seconds,
+                    waypoint_durma_suresi=10,
                     formation_distance=drone_distance,
-                    is_main_group_drone=is_main_member,
                     user_selected_formation_type=formation_type,
                     target_positions=mission_parameters
                 )
-            elif mission_id == 3: # Keşif
+            elif mission_id == 3: # Birey Ekleme Çıkarma (3 Dron)
+                formation_type = parsed_message[5]
                 mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 6)
-            elif mission_id == 4: # Tek dron test görevi
+                self.activeMission = BireyEkleCikarMission(
+                    self.drone, self.drone_controller,
+                    takeoff_altitude=takeoff_altitude,
+                    formasyon_suresi=hold_seconds,
+                    waypoint_durma_suresi=10,
+                    formation_distance=drone_distance,
+                    user_selected_formation_type=formation_type,
+                    target_positions=mission_parameters
+                )
+            elif mission_id == 4: # Keşif
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 6)
+            elif mission_id == 5: # Tek dron test görevi
                 self.activeMission = UcusKanitMission(
                     drone=self.drone, drone_controller=self.drone_controller,
                     target_locations = [
