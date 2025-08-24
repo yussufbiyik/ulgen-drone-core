@@ -1,3 +1,4 @@
+import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -138,10 +139,12 @@ class DroneService:
         elif message == "rtl":
             logging.info("GCS'den RTL (Return to Launch) mesajı alındı.")
             self.abortActiveMission()
+            logging.info("Aktif görev iptal edildi.")
             await self.drone_controller.go_home()
-            logging.info("Drone ev konumuna döndü.")
+            logging.info("Drone ev konumuna dönüyor.")
         elif message == "rb":
             logging.info("GCS'den RB (Reboot) mesajı alındı.")
+            os.system("sudo reboot")
         elif message == "abrt":
             logging.info("GCS'den ABRT (Abort) mesajı alındı.")
             self.abortActiveMission()
