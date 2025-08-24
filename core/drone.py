@@ -249,14 +249,19 @@ class Drone:
             self.process_drone_status_message(recieved_message)
         elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
-            self.send_private_message(sender, "ACK")
+            ack_id = message_raw[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_raw[0].startswith("f"):
             self.process_formation_message(recieved_message)
-        elif message_raw[0] == "ACK":
+        elif message_raw[0].startswith("ACK"):
             sender_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == sender), None)
             if sender_in_neighbor_list:
                 logging.info(f"{sender} ID'li drondan, ACK mesajı alındı ve güncellendi.")
-                sender_in_neighbor_list["data"]["acknowledged"] = True
+                ack_id = message_raw[1]
+                ack_list = sender_in_neighbor_list["data"].get("acknowledged", None)
+                if ack_list is None:
+                    sender_in_neighbor_list["data"]["acknowledged"] = {}
+                sender_in_neighbor_list["data"]["acknowledged"][ack_id] = True
 
     def broadcast_message(self, message):
         """
@@ -304,6 +309,8 @@ class Drone:
         :param receiver: Mesajın gönderileceği alıcı
         :param message: Gönderilecek mesaj
         """
+        ack_id = str(math.floor(random.uniform(100, 999)))
+        message = f"{message},{ack_id}"
         if self.isTesting:
             message = json.dumps({
                 "sender": self.fake_id,
@@ -318,15 +325,10 @@ class Drone:
         while True:
             not_acknowledged_drones = [
                 neighbor for neighbor in self.neighbors
-                if not neighbor["data"].get("acknowledged", False)
+                if not neighbor["data"].get("acknowledged", {}).get(ack_id, False)
             ]
-            # Bu kontrol tamamlanınca ACK işlemleri için değer false verilir ki,
-            # sonraki ACK kontrolünde tüm değerler True olup hatalı sonuç vermesin
             if len(not_acknowledged_drones) == 0:
                 logging.info("Tüm dronlar mesajı aldı.")
-                for drone in not_acknowledged_drones:
-                    drone_in_neighbor_list = next((n for n in self.neighbors if n["sender"] == drone["sender"]), None)
-                    drone_in_neighbor_list["data"]["acknowledged"] = False
                 return
             else:
                 for drone in not_acknowledged_drones:
