@@ -7,7 +7,7 @@ import logging
 
 from core.drone import Drone
 
-from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, assign_position, latlon_to_ned, ned_to_latlon, rotate_position
+from utils.formation_utilities import distance_meters, calculate_formation_weight_center, calculate_ideal_formation_positions, latlon_to_ned, ned_to_latlon, rotate_position # , assign_positions
 
 from mavsdk.action import OrbitYawBehavior
 
@@ -232,108 +232,107 @@ class DroneController:
                 return False
         logging.info("Tüm komşu dronlar formasyon konumunda.")
         return True
-    
-    async def get_drone_formation_position(self, formation_type, formation_distance, gps_position, center_position=None):
+        
+    async def assign_position(self, formation_positions):
+        """
+        Her adımda tüm dronlar ve pozisyonlar arasındaki en kısa mesafeyi bulur, 
+        o drona o pozisyonu atar, sonra tekrar eder.
+        """
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
+        # Tüm drone bilgilerini topla
+        drones = sorted(
+            [{"sender": self.drone.xbee_id, "data": {"gps_position": gps_position}}, *self.drone.neighbors],
+            key=lambda drone: int(drone["sender"])
+        )
+        available_positions = sorted(
+            formation_positions,
+            key=lambda pos: pos['latitude'] + pos['longitude']
+        )
+        available_drones = drones.copy()
+        assignments = {}
+
+        while available_positions and available_drones:
+            # Tüm (drone, position) çiftleri için mesafeyi hesapla
+            all_pairs = [
+                (drone, pos, distance_meters(drone["data"]["gps_position"], pos), p_idx)
+                for p_idx, pos in enumerate(available_positions)
+                for drone in available_drones
+            ]
+            # Mesafeye göre en küçük çifti seç; eşitlikte drone ID, sonra pozisyon indeksi ile deterministik karar ver
+            drone, pos, dist, _ = min(
+                all_pairs,
+                key=lambda x: (round(x[2], 6), int(x[0]["sender"]), x[3])
+            )
+
+            assignments[drone["sender"]] = pos
+            logging.info(
+                f"Drone {drone['sender']} için seçilen pozisyon: {pos}, mesafe: {dist}"
+            )
+
+            # Kullanılan dronu ve pozisyonu listeden çıkar
+            available_drones.remove(drone)
+            available_positions.remove(pos)
+
+        my_position = assignments[self.drone.xbee_id]
+        logging.info(f"Drone {self.drone.xbee_id} için atanan pozisyon: {my_position}")
+        return my_position, assignments
+
+    async def get_drone_formation_position(self, formation_type, formation_distance):
         """
         Drone'u formasyon konumuna taşır.
         """
         if len(self.drone.neighbors) < 2:
             logging.warning("Formasyon için yeterli komşu drone yok.")
             return
+        general_info = await self.drone.mavsdk_controller.get_general_info()
+        gps_position = general_info["gps_position"]
         # Drone'un ideal pozisyonunu belirle
-        center_position = center_position or calculate_formation_weight_center(gps_position, self.drone.neighbors)
+        center_position = calculate_formation_weight_center(gps_position, self.drone.neighbors)
         ideal_positions = calculate_ideal_formation_positions(formation_type, center_position, formation_distance)
 
-        assigned_position, position_assignments = assign_position(ideal_positions, gps_position, self.drone.xbee_id, self.drone.neighbors)
+        assigned_position, position_assignments = await self.assign_position(ideal_positions)
         position_assignments.pop(self.drone.xbee_id)  # Kendi pozisyonunu kaldır
         self.drone.formation["neighbor_positions"] = position_assignments
         return assigned_position, position_assignments
 
     async def resolve_position_conflicts(self, position_assignments, target_location):
-        loop_count = 0
-        # Mevcut hedef pozisyonu diğer dronlara yayınla
-        position_string = f"mt,{target_location['latitude']:.6f},{target_location['longitude']:.6f}".replace('.', '')
-        self.drone.broadcast_message(position_string)
-        # ACK ile hedef konumu gönder
-        await self.drone.send_message_with_ack(position_string)
-        while True:
-            # Fazla döngüden kaçınmak için güvenlik kontrolü
-            if loop_count > 2:
-                logging.warning("Çok fazla döngüde kaldı, formasyon kabul edildi.")
-                await self.drone.send_message_with_ack("mts,1")
-                # Tüm komşu dronlar hedefi kabul etti mi kontrol et
-                did_others_complete = all(
-                    neighbor["data"].get("target_status", True)
-                    for neighbor in self.drone.neighbors
-                )
-                if did_others_complete:
-                    logging.info("Tüm komşu dronlar formasyon konumlarını kabul etti.")
-                    return target_location
-            # Komşuların hedef pozisyonlarını topla
-            neighbor_target_positions = [
-                {"sender": neighbor["sender"], "target": neighbor["data"]["target_position"], "current_position": neighbor["data"]["gps_position"]}
-                for neighbor in self.drone.neighbors
-                if "target_position" in neighbor["data"]
-            ]
-            # Çakışan pozisyonları bul (1 metre içinde)
-            conflicting_positions = [
-                neighbor
-                for neighbor in neighbor_target_positions
-                if round(distance_meters(neighbor["target"], target_location), 3) < 1.000
-            ]
-            # Çakışma yoksa devam et
-            if (len(neighbor_target_positions) >= 2 and not conflicting_positions) or len(conflicting_positions) == 0:
-                logging.info("Formasyon konumu sorunsuz.")
-                # return
-            else:
-                # Çakışma varsa deterministik olarak önce alacağı yol en kısa olan dronaa,
-                # mesafeler eşit ise en küçük ID'li drona öncelik ver
-                conflicting_positions.sort(key=lambda n: int(str(n["sender"]), 16))
-                lowest_id_drone = conflicting_positions[0]
-                lowest_id = lowest_id_drone["sender"]
-                # Mesafe bazlı ilk kararı ver
-                general_info = await self.drone.mavsdk_controller.get_general_info()
-                gps_position = general_info["gps_position"]
-                if round(distance_meters(lowest_id_drone["target"], lowest_id_drone["current_position"]), 3) < round(distance_meters(self.drone.formation["position"], gps_position), 3):
-                    logging.info(f"Drone {lowest_id} pozisyona daha yakın, öncelik ona ait.")
-                    swap_position = position_assignments[lowest_id]
-                    if swap_position:
-                        target_location = {
-                            "latitude": swap_position["latitude"],
-                            "longitude": swap_position["longitude"]
-                        }
-                    else:
-                        logging.warning("Tüm komşu dronlar formasyon konumunu işgal ediyor, bekleniyor...")
-                # Mesafeler eşit ise en küçük ID'li drona öncelik ver
-                if int(str(self.drone.xbee_id), 16) > int(str(lowest_id), 16):
-                    # Daha büyük ID'ye sahip olan dron konumunu değiştirsin
-                    swap_position = position_assignments[lowest_id]
-                    logging.info(f"Değişim pozisyonu: {swap_position}")
-                    if swap_position:
-                        target_location = {
-                            "latitude": swap_position["latitude"],
-                            "longitude": swap_position["longitude"]
-                        }
-                    else:
-                        logging.warning("Tüm komşu dronlar formasyon konumunu işgal ediyor, bekleniyor...")
-                else:
-                    logging.info(f"Dron {self.drone.xbee_id} çakışmada öncelikli, konumunu koruyor.")
-            loop_count += 1
-            await asyncio.sleep(1.5 + random.uniform(0, 0.5))
+        clean_position = target_location
+        position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
+        # Tüm dronların gönderilen konum mesajını almasını bekle
+        await self.drone.send_message_with_ack(position_string())
+        neighbor_targets = lambda: {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
+        # Kendi konumunu diğer dronlarla karşılaştır
+        clean_position = target_location
+        for neighbor_id, neighbor_position in neighbor_targets().items():
+            # Eğer seçilen konumlar arası mesafe yeterince küçükse
+            if distance_meters(clean_position, neighbor_position) < 3:
+                logging.info(f"{neighbor_id} drone ile konum çakışması var.")
+                # ve komşu dronun id değeri dronun id değerinden küçükse
+                if neighbor_id < self.drone.xbee_id:
+                    logging.info(f"{neighbor_id} drone'un id değeri daha küçük, pozisyon değiştiriliyor.")
+                    # yeni pozisyon seç
+                    await self.drone.send_message_with_ack(position_string())
+                    unused_positions = [
+                        pos for pos in position_assignments.values()
+                        if all(distance_meters(pos, neighbor_pos) >= 3 for neighbor_pos in neighbor_targets().values())
+                    ]
+                    if unused_positions:
+                        logging.info(f"{self.drone.xbee_id} drone için temiz pozisyonlar bulundu.")
+                        # Yeni pozisyonu ata
+                        clean_position = unused_positions[0]
+                        logging.info(f"{self.drone.xbee_id} drone'un yeni pozisyonu: {clean_position}")
+        return clean_position
 
     async def goto_formation_location_with_offboard(self, formation_type, formation_distance):
-        general_info = await self.drone.mavsdk_controller.get_general_info()
-        gps_position = general_info["gps_position"]
-        target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance, gps_position)
+        target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance)
         self.drone.formation["position"] = target_location
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
         self.drone.offboard_status["target_position"] = target_location
         self.drone.offboard_status["altitude_to_keep"] = self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target
 
     async def goto_formation_location(self, formation_type, formation_distance):
-        general_info = await self.drone.mavsdk_controller.get_general_info()
-        gps_position = general_info["gps_position"]
-        target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance, gps_position)
+        target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance)
         self.drone.formation["position"] = target_location
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
         # Ardından hedef konuma ilerle

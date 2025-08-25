@@ -116,12 +116,14 @@ def assign_position(formation_positions, current_position, drone_id, neighbors=[
     o drona o pozisyonu atar, sonra tekrar eder.
     """
     # Tüm drone bilgilerini topla
-    drones = [
-        {"sender": drone_id, "data": {"gps_position": current_position}},
-        *neighbors
-    ]
-
-    available_positions = copy.deepcopy(formation_positions)
+    drones = sorted(
+        [{"sender": drone_id, "data": {"gps_position": current_position}}, *neighbors],
+        key=lambda drone: int(drone["sender"])
+    )
+    available_positions = sorted(
+        formation_positions,
+        key=lambda pos: pos['latitude'] + pos['longitude']
+    )
     available_drones = drones.copy()
     assignments = {}
 
