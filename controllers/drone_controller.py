@@ -301,7 +301,9 @@ class DroneController:
         position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
         # Tüm dronların gönderilen konum mesajını almasını bekle
         await self.drone.send_message_with_ack(position_string())
+        await asyncio.sleep(0.3)
         neighbor_targets = lambda: {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
+        print(neighbor_targets())
         # Kendi konumunu diğer dronlarla karşılaştır
         clean_position = target_location
         for neighbor_id, neighbor_position in neighbor_targets().items():
@@ -313,10 +315,14 @@ class DroneController:
                     logging.info(f"{neighbor_id} drone'un id değeri daha küçük, pozisyon değiştiriliyor.")
                     # yeni pozisyon seç
                     await self.drone.send_message_with_ack(position_string())
+                    await asyncio.sleep(0.3)
+                    neighbor_targets = lambda: {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
+                    print(neighbor_targets())
                     unused_positions = [
                         pos for pos in position_assignments.values()
                         if all(distance_meters(pos, neighbor_pos) >= 3 for neighbor_pos in neighbor_targets().values())
                     ]
+                    print(unused_positions)
                     if unused_positions:
                         logging.info(f"{self.drone.xbee_id} drone için temiz pozisyonlar bulundu.")
                         # Yeni pozisyonu ata
@@ -328,7 +334,7 @@ class DroneController:
         target_location, position_assignments = await self.get_drone_formation_position(formation_type, formation_distance)
         self.drone.formation["position"] = target_location
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
-        self.drone.offboard_status["target_position"] = target_location
+        self.drone.offboard_status["target_position"] = self.drone.formation["position"]
         self.drone.offboard_status["altitude_to_keep"] = self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target
 
     async def goto_formation_location(self, formation_type, formation_distance):
@@ -337,8 +343,8 @@ class DroneController:
         self.drone.formation["position"] = await self.resolve_position_conflicts(position_assignments, target_location)
         # Ardından hedef konuma ilerle
         await self.drone.mavsdk_controller.mavsdk.action.goto_location(
-            target_location["latitude"],
-            target_location["longitude"],
+            self.drone.formation["position"]["latitude"],
+            self.drone.formation["position"]["longitude"],
             self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target,
             0,  # yaw
         )

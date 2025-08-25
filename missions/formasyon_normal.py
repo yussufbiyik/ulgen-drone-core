@@ -116,7 +116,8 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_types=["cizgi", "ok", "cizgi", "v", "ok", "v", "ok", "cizgi", "v", "ok", "v", "cizgi"], formation_distance=10.0, formation_duration=5000)
+    # , "cizgi", "v", "ok", "v", "ok", "cizgi", "v", "ok", "v", "cizgi"
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_types=["v", "ok", "cizgi", "v", "ok", "v", "ok", "cizgi", "v", "ok", "v", "cizgi"], formation_distance=10.0, formation_duration=5000)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

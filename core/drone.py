@@ -182,27 +182,39 @@ class Drone:
                 "longitude": longitude
             }
             logging.debug(f"{sender} drone'u, {latitude}, {longitude} hedef konumuna gidiyor.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_data[0] == "mts":
             neighbor["data"]["target_status"] = int(message_data[1])
             logging.debug(f"{sender} drone'u, formasyon hesaplarını tamamladı.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_data[0] == "mf0":
             self.neighbors.remove(neighbor)
             self.inactive_neighbors.append(neighbor)
             logging.debug(f"{sender} drone'u, formasyon dışı olarak işaretlendi.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_data[0] == "mf1":
             self.inactive_neighbors.remove(neighbor)
             self.neighbors.append(neighbor)
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, formasyona dahil edildi.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_data[0] == "mh1":
             neighbor["data"]["is_home"] = True
             logging.debug(f"{sender} drone'u, ev konumuna döndü.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_data[0] == "ms1":
             self.inactive_neighbors.remove(neighbor)
             self.neighbors.append(neighbor)
             neighbor["data"]["is_synced"] = False
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
+            ack_id = message_data[-1]
+            self.send_private_message(sender, f"ACK,{ack_id}")
 
     def process_formation_message(self, message):
         """
@@ -249,8 +261,6 @@ class Drone:
             self.process_drone_status_message(recieved_message)
         elif message_raw[0].startswith("m"):
             self.process_mission_message(recieved_message)
-            ack_id = message_raw[-1]
-            self.send_private_message(sender, f"ACK,{ack_id}")
         elif message_raw[0].startswith("f"):
             self.process_formation_message(recieved_message)
         elif message_raw[0].startswith("ACK"):
