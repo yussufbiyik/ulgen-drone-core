@@ -89,7 +89,6 @@ class DroneService:
                 "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
             })
         else:
-            print("ned")
             swarm_center = calculate_formation_weight_center(gps_position, self.drone.neighbors)
             ref_lat, ref_lon = swarm_center["latitude"], swarm_center["longitude"]
             for index in range(0, len(locations_raw), 2):
@@ -104,7 +103,7 @@ class DroneService:
                     "altitude": self.drone.pre_takeoff_location["altitude"] + takeoff_altitude,
                 })
                 ref_lat, ref_lon = lat, lon  # Son konumu referans olarak güncelle
-        print(f"Alınan konumlar: {locations}")
+        logging.info(f"Alınan konumlar: {locations}")
         return locations
 
     def abortActiveMission(self):

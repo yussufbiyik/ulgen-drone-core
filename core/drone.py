@@ -221,7 +221,7 @@ class Drone:
         Diğer dronlardan gelen formasyon mesajlarını işler.
         """
         message_data = message['data'].split(',')
-        print(message_data)
+        logging.info(message_data)
         if message_data[0] == "fl":
             # Formasyondan çıkma mesajı
             message_subject = int(message_data[1], 16)

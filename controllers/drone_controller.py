@@ -459,9 +459,10 @@ class DroneController:
             await asyncio.sleep(0.1)
         # İniş yap
         await self.land()
-        # Saha testlerinde buraya koyduğum irtifa kontrol kodu sorun çıkarttığı için dron yerde kitlenmişti
-        # irtifa kontrolünü kaldırdım, nasıl davranır bilmiyorum dikkat edin
-        # sorun olursa eski versiyondan geri ekleyin
+        landed = await self.altitude_check(0)
+        while not landed:
+            landed = await self.altitude_check(0)
+            await asyncio.sleep(0.1)
         await asyncio.sleep(hold_time)  # Bir süre bekle, ardından formasyona geri gir
         # Arm değilse arm et
         is_armed = await self.arm_check()
@@ -489,8 +490,8 @@ class DroneController:
         while distance_to_target > self.drone.waypoint_threshold:
             current_data = await self.drone.mavsdk_controller.get_general_info()
             current_gps = current_data["gps_position"]
-            await asyncio.sleep(0.1)
             distance_to_target = distance_meters(current_gps, self.drone.formation["position"])
+            await asyncio.sleep(0.1)
         await self.drone.mavsdk_controller.mavsdk.action.goto_location(
             self.drone.formation["position"]["latitude"],
             self.drone.formation["position"]["longitude"],
@@ -508,6 +509,7 @@ class DroneController:
                 n.get("data", {}).get("leave", False)
                 for n in (self.drone.neighbors or [])
             )
+            print(leaving_neighbor)
             if not leaving_neighbor:
                 return True
         # İnecek dronu bekle
