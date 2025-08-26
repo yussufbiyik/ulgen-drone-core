@@ -25,7 +25,7 @@ async def sleep_for_check(milliseconds):
     """
     global time_waited
     current_time = time.time()
-    if current_time - time_waited >= milliseconds / 1000:
+    if (current_time - time_waited) >= (milliseconds / 1000):
         return True
     else:
         return False
@@ -47,7 +47,7 @@ class FormasyonMission(Mission):
         # Parametreleri Al
         user_selected_formation_types = self.parameters.get("user_selected_formation_types", [])
         formation_distance = self.parameters.get("formation_distance", 5.0)
-        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
+        formasyon_suresi = self.parameters.get("formation_duration", 100.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Diğer dronlardan broadcast bekle
