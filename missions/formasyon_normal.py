@@ -46,9 +46,9 @@ class FormasyonMission(Mission):
     async def run(self):
         # Parametreleri Al
         user_selected_formation_types = self.parameters.get("user_selected_formation_types", [])
-        formation_distance = self.parameters.get("formation_distance", 5.0)
-        formasyon_suresi = self.parameters.get("formation_duration", 100.0)
-        takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
+        formation_distance = self.parameters.get("formation_distance", 10.0)
+        formasyon_suresi = self.parameters.get("formation_duration", 7000.0)
+        takeoff_altitude = self.parameters.get("takeoff_altitude", 15.0)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(1)))
