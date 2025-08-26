@@ -63,6 +63,11 @@ class FormasyonMission(Mission):
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
             )
+        self.step_controller.add_step(Step(
+                "Kalkış durumunda bekle",
+                lambda: sleep_for(6000),
+                lambda: sleep_for_check(6000)
+            ))
         formation_step = lambda formation_name, distance: Step(
                 "Formasyona Gir",
                 lambda: self.drone_controller.goto_formation_location(formation_name, distance),
@@ -117,7 +122,7 @@ async def main(sim_instance=0):
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
     # , "cizgi", "v", "ok", "v", "ok", "cizgi", "v", "ok", "v", "cizgi"
-    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=10.0, user_selected_formation_types=["v", "ok", "cizgi", "v", "ok", "v", "ok", "cizgi", "v", "ok", "v", "cizgi"], formation_distance=10.0, formation_duration=5000)
+    mission = FormasyonMission(drone, drone_controller, takeoff_altitude=15.0, user_selected_formation_types=["ok", "cizgi", "v"], formation_distance=10.0, formation_duration=7000)
     await mission.run()
     drone.mavsdk_controller.disconnect()
     sys.exit(0)

@@ -15,7 +15,7 @@ until ping -c1 8.8.8.8 &>/dev/null; do
 done
 
 cd "$HOME/drone-core" || exit 1
-
+ 
 # Güncellemeleri al
 git reset --hard
 git pull

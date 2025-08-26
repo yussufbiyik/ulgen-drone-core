@@ -197,6 +197,7 @@ class DroneController:
         logging.info("Drone iniş yapıyor...")
         self.drone.offboard_status["is_active"] = False
         await self.drone.mavsdk_controller.mavsdk.action.land()
+        # await self.drone.mavsdk_controller.mavsdk.action.set_current_speed(0.1)
 
     async def disarm_pre_check(self):
         """
