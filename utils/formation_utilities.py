@@ -4,7 +4,7 @@ import logging
 
 def calculate_formation_positions(formation_type, d):
     h = d * math.sin(math.radians(60))
-    if formation_type == "ok":
+    if formation_type == "v":
         return [
             (0, 0),           # merkez (uç)
             (-d/2, -h),       # sol kanat
@@ -12,7 +12,7 @@ def calculate_formation_positions(formation_type, d):
         ]
     elif formation_type == "cizgi":
         return [(0, -d), (0, 0), (0, d)]
-    elif formation_type == "v":
+    elif formation_type == "ok":
         return [
             (0, 0),           # merkez (uç)
             (-d/2, h),        # sol kanat
