@@ -105,7 +105,8 @@ def calculate_ideal_formation_positions(formation_type, center_position, d):
     
     for pos in positions:
         lat_offset, lon_offset = pos
-        new_lat, new_lon = ned_to_latlon(lat_offset, lon_offset, center_position['latitude'], center_position['longitude'])
+        rot_n, rot_e = rotate_position(lat_offset, lon_offset, -18)
+        new_lat, new_lon = ned_to_latlon(rot_n, rot_e, center_position['latitude'], center_position['longitude'])
         ideal_positions.append({'latitude': new_lat, 'longitude': new_lon})
     
     return ideal_positions
