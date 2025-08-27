@@ -51,7 +51,7 @@ class SuruNavigasyonMission(Mission):
         formasyon_suresi = self.parameters.get("formasyon_suresi", 7000.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
-        health = self.drone.mavsdk_controller.mavsdk.telemetry.health().__anext__()
+        health = await self.drone.mavsdk_controller.mavsdk.telemetry.health().__anext__()
         is_armable = health.is_armable
         if not is_armable:
             self.step_controller.abort_steps()
@@ -117,7 +117,7 @@ class SuruNavigasyonMission(Mission):
 # bu değişken 0'dan başlayarak artar. Her sitl için birer arttırılır
 async def main(sim_instance=0):
     logging.basicConfig(level=logging.INFO)
-    isTesting = False
+    isTesting = True
     mavsdk_port = lambda: f"udp://0.0.0.0:1454{sim_instance}" if isTesting else "serial:///dev/ttyACM0:57600"
     mavsdk_controller = MAVSDKController(
         system_address=mavsdk_port(),
@@ -143,18 +143,13 @@ async def main(sim_instance=0):
 
     sim_locations = [
         {
-            "latitude": 47.397970,
-            "longitude": 8.546641,
+            "latitude": 40.74460170605111,
+            "longitude": 30.338462637206657,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
         {
-            "latitude": 47.397742,
-            "longitude": 8.546451,
-            "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
-        },
-        {
-            "latitude": 47.397890,
-            "longitude": 8.546217,
+            "latitude": 40.74446846144542,
+            "longitude": 30.338536312668566,
             "altitude": drone.pre_takeoff_location["altitude"]+takeoff_altitude,
         },
     ]
