@@ -48,9 +48,13 @@ class SuruNavigasyonMission(Mission):
         # Parametreleri Al
         user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
         formation_distance = self.parameters.get("formation_distance", 10.0)
-        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
+        formasyon_suresi = self.parameters.get("formasyon_suresi", 7000.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
+        health = self.drone.mavsdk_controller.mavsdk.telemetry.health().__anext__()
+        is_armable = health.is_armable
+        if not is_armable:
+            self.step_controller.abort_steps()
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(2)))
         # Kalkış öncesi konumu ayarla
@@ -64,6 +68,11 @@ class SuruNavigasyonMission(Mission):
                  lambda: self.drone_controller.altitude_check(takeoff_altitude)
                 )
             )
+        self.step_controller.add_step(Step(
+                "Kalkış durumunda bekle",
+                lambda: sleep_for(formasyon_suresi),
+                lambda: sleep_for_check(formasyon_suresi)
+            ))
         formation_step = lambda formation_name, distance: Step(
                 "Formasyona Gir",
                 lambda: self.drone_controller.goto_formation_location(formation_name, distance),
@@ -71,8 +80,8 @@ class SuruNavigasyonMission(Mission):
             )
         formation_hold_step = lambda hold_time: Step(
                 "Formasyonda Kal",
-                lambda: sleep_for(hold_time),
-                lambda: sleep_for_check(hold_time)
+                lambda: sleep_for(3000),
+                lambda: sleep_for_check(3000)
             )
         # Formasyona gir
         self.drone.formation_type = user_selected_formation_type
