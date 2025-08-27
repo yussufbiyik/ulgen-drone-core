@@ -302,12 +302,11 @@ class DroneController:
         position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
         # Tüm dronların gönderilen konum mesajını almasını bekle
         await self.drone.send_message_with_ack(position_string())
-        await asyncio.sleep(0.3)
-        neighbor_targets = lambda: {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
-        print(neighbor_targets())
+        await asyncio.sleep(0.5)
+        neighbor_targets = {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
         # Kendi konumunu diğer dronlarla karşılaştır
         clean_position = target_location
-        for neighbor_id, neighbor_position in neighbor_targets().items():
+        for neighbor_id, neighbor_position in neighbor_targets.items():
             # Eğer seçilen konumlar arası mesafe yeterince küçükse
             if distance_meters(clean_position, neighbor_position) < 3:
                 logging.info(f"{neighbor_id} drone ile konum çakışması var.")
@@ -315,13 +314,13 @@ class DroneController:
                 if neighbor_id < self.drone.xbee_id:
                     logging.info(f"{neighbor_id} drone'un id değeri daha küçük, pozisyon değiştiriliyor.")
                     # yeni pozisyon seç
+                    position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
                     await self.drone.send_message_with_ack(position_string())
                     await asyncio.sleep(0.3)
-                    neighbor_targets = lambda: {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
-                    print(neighbor_targets())
+                    neighbor_targets = {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
                     unused_positions = [
                         pos for pos in position_assignments.values()
-                        if all(distance_meters(pos, neighbor_pos) >= 3 for neighbor_pos in neighbor_targets().values())
+                        if all(distance_meters(pos, neighbor_pos) >= 3 for neighbor_pos in neighbor_targets.values())
                     ]
                     print(unused_positions)
                     if unused_positions:
