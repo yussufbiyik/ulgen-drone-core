@@ -65,7 +65,7 @@ class Drone:
             "longitude": 0.0,
             "altitude": 0.0
         }  # Aslında home gibi
-        self.speed_limit = 3.0  # m/s olarak varsayılan hız sınırı
+        self.speed_limit = 2.0  # m/s olarak varsayılan hız sınırı
         self.altitude_target = 0.0  # m olarak varsayılan irtifa hedefi
         self.waypoint_threshold = 1.0  # m olarak varsayılan waypoint eşiği
         self.offboard_controller = OffboardController(self)
