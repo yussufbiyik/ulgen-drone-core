@@ -58,7 +58,8 @@ class BireyEkleCikar2DroneMission(Mission):
         gps_position = general_info["gps_position"]
         position_string = f"mt,{gps_position['latitude']:.6f},{gps_position['longitude']:.6f}".replace('.', '')
         joining_drone = self.drone.inactive_neighbors[0]["sender"]
-        self.drone.send_private_message(joining_drone, position_string)
+        # self.drone.send_private_message(joining_drone, position_string)
+        await self.drone.send_message_with_ack(position_string)
         return True
 
     async def return_true(self):
