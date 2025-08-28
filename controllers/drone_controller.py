@@ -283,7 +283,7 @@ class DroneController:
         """
         Drone'u formasyon konumuna taşır.
         """
-        if len(self.drone.neighbors) < 2:
+        if len(self.drone.neighbors) < 1:
             logging.warning("Formasyon için yeterli komşu drone yok.")
             return
         general_info = await self.drone.mavsdk_controller.get_general_info()
@@ -299,10 +299,11 @@ class DroneController:
 
     async def resolve_position_conflicts(self, position_assignments, target_location):
         clean_position = target_location
-        position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
+        position_string = f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
         # Tüm dronların gönderilen konum mesajını almasını bekle
-        await self.drone.send_message_with_ack(position_string())
+        await self.drone.send_message_with_ack(position_string)
         await asyncio.sleep(0.5)
+        print(len(self.drone.neighbors))
         neighbor_targets = {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
         # Kendi konumunu diğer dronlarla karşılaştır
         clean_position = target_location
@@ -314,8 +315,8 @@ class DroneController:
                 if neighbor_id < self.drone.xbee_id:
                     logging.info(f"{neighbor_id} drone'un id değeri daha küçük, pozisyon değiştiriliyor.")
                     # yeni pozisyon seç
-                    position_string = lambda: f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
-                    await self.drone.send_message_with_ack(position_string())
+                    position_string = f"mt,{clean_position['latitude']:.6f},{clean_position['longitude']:.6f}".replace('.', '')
+                    await self.drone.send_message_with_ack(position_string)
                     await asyncio.sleep(0.3)
                     neighbor_targets = {n["sender"]: n["data"]["target_position"] for n in self.drone.neighbors}
                     unused_positions = [
@@ -418,6 +419,136 @@ class DroneController:
         if self.drone.formation["leave"] or leaving_neighbor:
             return True
         return False
+    
+    async def leave_formation(self, is_leaving):
+        """
+        Dronu formasyondan çıkartır ve eve döndürür
+        """
+        if not is_leaving:
+            logging.info("Ayrılan dron olmadığı için es geçiliyor")
+            return
+        self.drone.formation["is_active"] = False
+        self.drone.formation["position"] = None
+        self.drone.formation["weight_center"] = None
+        logging.info("Drone formasyondan çıkartıldı.")
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        self.drone.formation["position"] = current_gps
+        # İrtifayı 5 mt yükselt
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            current_gps["latitude"],
+            current_gps["longitude"],
+            current_gps["altitude"] + 5,
+            0,  # yaw
+        )
+        is_on_rtl_altitude = await self.altitude_check(self.drone.altitude_target + 5)
+        while not is_on_rtl_altitude:
+            await asyncio.sleep(0.1)
+            is_on_rtl_altitude = await self.altitude_check(self.drone.altitude_target + 5)
+        # Launch pozisyonu ile aynı hizaya gel
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            self.drone.pre_takeoff_location["latitude"],
+            self.drone.pre_takeoff_location["longitude"],
+            current_gps["altitude"] + 5,
+            0,  # yaw
+        )
+        distance_to_launch = distance_meters(current_gps, self.drone.pre_takeoff_location)
+        while distance_to_launch > self.drone.waypoint_threshold:
+            current_data = await self.drone.mavsdk_controller.get_general_info()
+            current_gps = current_data["gps_position"]
+            distance_to_launch = distance_meters(current_gps, self.drone.pre_takeoff_location)
+            await asyncio.sleep(0.1)
+        # İniş yap
+        await self.land()
+
+    async def leave_formation_check(self, is_leaving, is_joining):
+        """Dronun formasyondan ayrılıp ayrılmadığını kontrol eder"""
+        if not is_leaving:
+            if is_joining:
+                logging.info("Kendi katılacak dron olduğu için es geçiliyor")
+                return True
+            if len(self.drone.neighbors) > 0:
+                return False
+            return True
+        is_landed = await self.altitude_check(0)
+        if not is_landed:
+            return False
+        await self.drone.send_message_with_ack("mf0")
+        return True
+
+    async def join_formation(self):
+        """
+        Ayrılan bir formasyon üyesinin yerine geçerek dronu formasyona dahil eder
+        """
+        print(self.drone.inactive_neighbors)
+        print("*")
+        print(self.drone.neighbors)
+        leaving_neighbor = next(
+            (n for n in (self.drone.neighbors or []) if n.get("data", {}).get("leave", True)),
+            None
+        )
+        if not leaving_neighbor:
+            logging.error("İnen dron tespit edilemedi")
+            return
+        if not leaving_neighbor.get("data", {}).get("target_position", None):
+            logging.error("İnen dronun formasyon pozisyonu tespit edilemedi")
+            return
+        self.drone.formation["position"] = leaving_neighbor.get("data", {}).get("target_position", None)
+        # İrtifayı yükselt
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            self.drone.pre_takeoff_location["latitude"],
+            self.drone.pre_takeoff_location["longitude"],
+            self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target + 5,  # Başta +5 irtifa ile gidip, lat, lon oturunca irtifayı düzeltecek
+            0,  # yaw
+        )
+        is_on_altitude = await self.altitude_check(self.drone.altitude_target + 5)
+        while not is_on_altitude:
+            is_on_altitude = await self.altitude_check(self.drone.altitude_target + 5)
+            await asyncio.sleep(0.1)
+        # Tekrar formasyona gir (önce yüksek irtifa, ardından aynı irtifa)
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            self.drone.inactive_neighbors[0]["data"]["target_position"]["latitude"],
+            self.drone.inactive_neighbors[0]["data"]["target_position"]["longitude"],
+            self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target + 5,
+            0,  # yaw
+        )
+        # Lat ve lon değerlerini oturt
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        distance_to_target = distance_meters(current_gps, self.drone.inactive_neighbors[0]["data"]["target_position"])
+        while distance_to_target > self.drone.waypoint_threshold:
+            current_data = await self.drone.mavsdk_controller.get_general_info()
+            current_gps = current_data["gps_position"]
+            distance_to_target = distance_meters(current_gps, self.drone.inactive_neighbors[0]["data"]["target_position"])
+            await asyncio.sleep(0.1)
+        # İrtifayı toparla
+        await self.drone.mavsdk_controller.mavsdk.action.goto_location(
+            current_gps["latitude"],
+            current_gps["longitude"],
+            self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target,
+            0,  # yaw
+        )
+
+    async def join_formation_check(self, is_joining, is_leaving):
+        """Dronun formasyona katılıp katılmadığını kontrol eder"""
+        if not is_joining:
+            if is_leaving:
+                logging.info("Kendi inen dron olduğu için es geçiliyor")
+                return True
+            any_synced = [n for n in self.drone.neighbors if n["data"].get("is_synced", False)]
+            if len(any_synced) > 0:
+                return True
+            return False
+        current_data = await self.drone.mavsdk_controller.get_general_info()
+        current_gps = current_data["gps_position"]
+        distance_to_formation_point = distance_meters(
+            self.drone.inactive_neighbors[0]["data"]["target_position"],
+            current_gps
+        )
+        if distance_to_formation_point <= self.drone.waypoint_threshold:
+            await self.drone.send_message_with_ack("mf1")
+            return True
+        return False
 
     async def leave_formation_and_rejoin(self, hold_time = 5):
         """
@@ -509,7 +640,6 @@ class DroneController:
                 n.get("data", {}).get("leave", False)
                 for n in (self.drone.neighbors or [])
             )
-            print(leaving_neighbor)
             if not leaving_neighbor:
                 return True
         # İnecek dronu bekle

@@ -45,13 +45,18 @@ class BireyEkleCikar3DroneMission(Mission):
 
     async def run(self):
         # Parametreleri Al
-        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "v")
-        formation_distance = self.parameters.get("formation_distance", 5.0)
-        formasyon_suresi = self.parameters.get("formasyon_suresi", 100.0)
-        waypoint_durma_suresi = self.parameters.get("waypoint_durma_suresi", 1000.0)
+        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "cizgi")
+        formation_distance = self.parameters.get("formation_distance", 10.0)
+        formasyon_suresi = self.parameters.get("formasyon_suresi", 3000.0)
+        waypoint_durma_suresi = self.parameters.get("waypoint_durma_suresi", 7000.0)
         takeoff_altitude = self.parameters.get("takeoff_altitude", 10.0)
         target_positions = self.parameters.get("target_positions", [])
+        is_leaving_drone = self.parameters.get("is_leaving_drone", False)
         self.drone.altitude_target = takeoff_altitude  # Dronun irtifa hedefini kalkış irtifasına ayarla
+        health = await self.drone.mavsdk_controller.mavsdk.telemetry.health().__anext__()
+        is_armable = health.is_armable
+        if not is_armable:
+            self.step_controller.abort_steps()
         # Diğer dronlardan broadcast bekle
         self.step_controller.add_step(Step("Diğer Dronlardan Broadcast Bekle", self.drone_controller.wait_for_broadcast, lambda: self.drone_controller.wait_for_broadcast_check(1)))
         # Kalkış öncesi konumu ayarla

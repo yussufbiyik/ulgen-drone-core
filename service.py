@@ -20,6 +20,7 @@ from missions.formasyon_pid import FormasyonMission as FormasyonPID
 from missions.suru_normal import SuruNavigasyonMission as SuruNavigasyonNormal
 from missions.suru_pid import SuruNavigasyonMission as SuruNavigasyonPID
 from missions.birey_ekle_cikar_3_dron import BireyEkleCikar3DroneMission as BireyEkleCikarMission
+from missions.birey_ekle_cikar_2_dron import BireyEkleCikar2DroneMission
 
 # Test Görevleri
 from missions.tests.pid_navigasyon import UcusKanitMission
@@ -180,18 +181,24 @@ class DroneService:
                     user_selected_formation_type=formation_type,
                     target_locations=mission_parameters,
                 )
-            elif mission_id == 2: # Birey Ekleme Çıkarma
-                is_main_member = int(parsed_message[5])
-                formation_type = parsed_message[6]
+            elif mission_id == 2: # Birey Ekleme Çıkarma (2 Dron)
+                is_main_member = bool(int(parsed_message[5]))
+                is_leaving_member = bool(int(parsed_message[6]))
+                is_joining_member = not is_leaving_member and not is_main_member
+                formation_type = parsed_message[7]
+                print(parsed_message)
                 mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 8)
-                self.activeMission = BireyEkleCikarMission(
+                print(mission_parameters)
+                self.activeMission = BireyEkleCikar2DroneMission(
                     self.drone, self.drone_controller,
                     takeoff_altitude=takeoff_altitude,
-                    formasyon_suresi=hold_seconds,
-                    waypoint_durma_suresi=10,
                     formation_distance=drone_distance,
                     user_selected_formation_type=formation_type,
-                    target_positions=mission_parameters
+                    target_positions=mission_parameters,
+                    formasyon_suresi=hold_seconds,
+                    is_joining_drone=is_joining_member,
+                    is_leaving_drone=is_leaving_member,
+                    waypoint_durma_suresi=8,
                 )
             elif mission_id == 3: # Birey Ekleme Çıkarma (3 Dron)
                 formation_type = parsed_message[5]
@@ -205,8 +212,19 @@ class DroneService:
                     user_selected_formation_type=formation_type,
                     target_positions=mission_parameters
                 )
-            elif mission_id == 4: # Keşif
-                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 6)
+            elif mission_id == 4: # Birey Ekleme Çıkarma (4 Dron)
+                is_main_member = int(parsed_message[5])
+                formation_type = parsed_message[6]
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 8)
+                self.activeMission = BireyEkleCikarMission(
+                    self.drone, self.drone_controller,
+                    takeoff_altitude=takeoff_altitude,
+                    formasyon_suresi=hold_seconds,
+                    waypoint_durma_suresi=10,
+                    formation_distance=drone_distance,
+                    user_selected_formation_type=formation_type,
+                    target_positions=mission_parameters
+                )
             elif mission_id == 5: # Tek dron test görevi
                 self.activeMission = UcusKanitMission(
                     drone=self.drone, drone_controller=self.drone_controller,

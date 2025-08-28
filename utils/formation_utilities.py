@@ -12,6 +12,8 @@ def calculate_formation_positions(formation_type, d):
         ]
     elif formation_type == "cizgi":
         return [(0, -d), (0, 0), (0, d)]
+    elif formation_type == "y-": # Yatay çizgi (2 Bireyli)
+        return [(-d/2, 0), (d/2, 0)]
     elif formation_type == "ok":
         return [
             (0, 0),           # merkez (uç)
@@ -98,7 +100,7 @@ def calculate_ideal_formation_positions(formation_type, center_position, d):
     """
     Belirtilen formasyon tipine göre ideal konumları hesaplar.
     """
-    if formation_type not in ["v", "cizgi", "ok"]:
+    if formation_type not in ["v", "cizgi", "ok", "y-"]:
         raise ValueError("Geçersiz formasyon tipi, desteklenmiyor.")
     positions = calculate_formation_positions(formation_type, d)
     ideal_positions = []

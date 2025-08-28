@@ -7,7 +7,7 @@ from core.drone import Drone
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - [%(levelname)s]\n\t⤷ %(message)s')
 
 class Step:
-    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None, is_neighbor_dependant=True):
+    def __init__(self, name, function, checkFunction, preCheckFunction=None, isRequired=False, timeout=None, is_neighbor_dependant=True, should_skip=False):
         """
         Adım sınıfı.
 
@@ -22,6 +22,7 @@ class Step:
         self.is_completed = False
 
         self.name = name
+        self.skip = should_skip
         self.function = function
         self.checkFunction = checkFunction
         self.preCheckFunction = preCheckFunction
@@ -71,6 +72,10 @@ class StepController:
             self.drone.mission_info["current_step"]["status"] = 0
             start_time = time.time()*1000
             try:
+                if step.skip:
+                    logging.error("Adım es geçiliyor...")
+                    self.drone.mission_info["current_step"]["status"] = 1
+                    continue
                 if step.preCheckFunction is not None:
                     while not await step.preCheckFunction():
                         logging.warning(f"Adım {step.name} ön kontrolü başarısız veya yok, atlanıyor.")

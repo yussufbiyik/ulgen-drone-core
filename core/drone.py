@@ -140,7 +140,8 @@ class Drone:
                 "status": int(message_data[2][-1]),
             }
         }
-        if not neighbor:
+        is_in_inactive_neighbors = any(n["sender"] == sender for n in self.inactive_neighbors)
+        if not neighbor and not is_in_inactive_neighbors:
             logging.info(f"Yeni komşu drone bulundu: {sender}, ekleniyor...")
             message_data = {
                 "sender": sender,
@@ -154,6 +155,13 @@ class Drone:
             }
             self.neighbors.append(message_data)
             logging.info(f"Yeni komşu eklendi: {sender} ({(message['timestamp'] - time.time()):.2f}ms).")
+        elif is_in_inactive_neighbors:
+            neighbor = next((n for n in self.inactive_neighbors if n["sender"] == sender), None)
+            if neighbor:
+                neighbor_data = neighbor["data"]
+                neighbor_data["gps_position"] = gps_position
+                neighbor_data["mission"]["current_step"] = mission["current_step"]
+            logging.debug(f"{sender} drone'u, pasif komşular listesinde, güncellendi.")
         else:
             logging.debug(f"{sender} zaten mevcut:, güncelleniyor ({(message['timestamp'] - time.time()):.2f}ms).")
             data = neighbor["data"]
@@ -165,7 +173,11 @@ class Drone:
         Diğer dronlardan gelen görev mesajlarını işler.
         """
         sender = message["sender"]
-        neighbor= next((n for n in self.neighbors if n["sender"] == sender), None)
+        all_neighbors = [
+            *self.neighbors,
+            *self.inactive_neighbors
+        ]
+        neighbor = next((n for n in all_neighbors if n["sender"] == sender), None)
         if not neighbor:
             logging.warning(f"Komşu drone bulunamadı: {sender}, mesaj işlenemiyor.")
             return
@@ -203,9 +215,7 @@ class Drone:
             logging.debug(f"{sender} drone'u, ev konumuna döndü.")
             self.send_private_message(sender, f"ACK")
         elif message_data[0] == "ms1":
-            self.inactive_neighbors.remove(neighbor)
-            self.neighbors.append(neighbor)
-            neighbor["data"]["is_synced"] = False
+            neighbor["data"]["is_synced"] = True
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
             self.send_private_message(sender, f"ACK")
