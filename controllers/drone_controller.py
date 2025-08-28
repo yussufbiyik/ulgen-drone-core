@@ -382,7 +382,7 @@ class DroneController:
         drone_formation_position_at_target = {
             "latitude": target_lat_offset,
             "longitude": target_lon_offset,
-            "altitude": gps_position["altitude"]  # GPS yüksekliğine göre ayarlanır
+            "altitude": self.drone.pre_takeoff_location["altitude"] + self.drone.altitude_target
         }
         self.drone.formation["position"] = drone_formation_position_at_target
         if not isOffboard:
@@ -545,8 +545,8 @@ class DroneController:
             self.drone.inactive_neighbors[0]["data"]["target_position"],
             current_gps
         )
-        if distance_to_formation_point <= self.drone.waypoint_threshold:
-            await self.drone.send_message_with_ack("mf1")
+        if distance_to_formation_point <= 0.2:
+            await self.drone.send_message_with_ack("ms1")
             return True
         return False
 

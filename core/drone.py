@@ -215,6 +215,8 @@ class Drone:
             logging.debug(f"{sender} drone'u, ev konumuna döndü.")
             self.send_private_message(sender, f"ACK")
         elif message_data[0] == "ms1":
+            self.inactive_neighbors.remove(neighbor)
+            self.neighbors.append(neighbor)
             neighbor["data"]["is_synced"] = True
             neighbor["data"]["is_formation_drone"] = True
             logging.debug(f"{sender} drone'u, diğer bir dronun formasyon konumuna döndü.")
