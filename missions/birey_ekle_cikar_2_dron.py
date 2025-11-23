@@ -205,7 +205,7 @@ async def main(sim_instance=0):
         await asyncio.sleep(1)
     logging.info("Drone bağlantısı kuruldu.")
     await drone_controller.wait_for_proper_data()
-    mission = BireyEkleCikarMission(
+    mission = BireyEkleCikar2DroneMission(
             drone, 
             drone_controller, 
             takeoff_altitude=5.0, 
