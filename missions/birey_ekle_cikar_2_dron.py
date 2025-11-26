@@ -67,7 +67,8 @@ class BireyEkleCikar2DroneMission(Mission):
 
     async def run(self):
         # Parametreleri Al
-        user_selected_formation_type = self.parameters.get("user_selected_formation_type", "y-")
+        user_selected_formation_types = self.parameters.get("user_selected_formation_types", [])
+        print(user_selected_formation_types)
         formation_distance = self.parameters.get("formation_distance", 12.0)
         formasyon_suresi = self.parameters.get("formasyon_suresi", 4000.0)
         waypoint_durma_suresi = self.parameters.get("waypoint_durma_suresi", 8000.0)
@@ -106,7 +107,7 @@ class BireyEkleCikar2DroneMission(Mission):
         ))
         self.step_controller.add_step(Step(
             "Formasyona Gir",
-            lambda: self.drone_controller.goto_formation_location(user_selected_formation_type, formation_distance),
+            lambda: self.drone_controller.goto_formation_location(user_selected_formation_types[0], formation_distance),
             lambda: self.drone_controller.goto_formation_location_check(),
             should_skip=is_joining_drone
         ))
@@ -123,16 +124,28 @@ class BireyEkleCikar2DroneMission(Mission):
             should_skip=is_joining_drone
         ))
         self.step_controller.add_step(Step(
+            "2. Formasyona Gir",
+            lambda: self.drone_controller.goto_formation_location(user_selected_formation_types[1], formation_distance),
+            lambda: self.drone_controller.goto_formation_location_check(),
+            should_skip=is_joining_drone
+        ))
+        # self.step_controller.add_step(Step(
+        #     "1. Hedef Konumda Bekle",
+        #     lambda: sleep_for(waypoint_durma_suresi),
+        #     lambda: sleep_for_check(waypoint_durma_suresi),
+        #     should_skip=is_joining_drone
+        # ))
+        self.step_controller.add_step(Step(
+            "2. Hedef Konuma İlerle",
+            lambda loc=target_positions[1]: self.drone_controller.goto_location_with_formation(loc, False), 
+            lambda loc=target_positions[1]: self.drone_controller.goto_location_with_formation_check(loc),
+            should_skip=is_joining_drone
+        ))
+        self.step_controller.add_step(Step(
             "Katılacak drona konumu bildir",
             self.send_self_waypoint_position,
             self.return_true,
-            should_skip=(is_joining_drone or not is_leaving_drone)
-        ))
-        self.step_controller.add_step(Step(
-            "1. Hedef Konumda Bekle",
-            lambda: sleep_for(waypoint_durma_suresi),
-            lambda: sleep_for_check(waypoint_durma_suresi),
-            should_skip=is_joining_drone
+            should_skip=not is_leaving_drone
         ))
         self.step_controller.add_step(Step(
             "Ayrılacak Dronun İnişini Bekle",
@@ -151,14 +164,20 @@ class BireyEkleCikar2DroneMission(Mission):
         ))
         self.step_controller.add_step(Step(
             "Katılacak Dronun Gelişini Bekle",
-            self.drone_controller.join_formation,
+            lambda: self.drone_controller.join_formation(is_joining_drone),
             lambda: self.drone_controller.join_formation_check(is_joining_drone, is_leaving_drone),
-            should_skip=is_leaving_drone
+            should_skip=is_leaving_drone,
         ))
+        # self.step_controller.add_step(Step(
+        #     "2. Hedef Konumda Bekle",
+        #     lambda: sleep_for(waypoint_durma_suresi),
+        #     lambda: sleep_for_check(waypoint_durma_suresi),
+        #     should_skip=is_leaving_drone
+        # ))
         self.step_controller.add_step(Step(
-            "2. Hedef Konuma İlerle",
-            lambda loc=target_positions[1]: self.drone_controller.goto_location_with_formation(loc, False), 
-            lambda loc=target_positions[1]: self.drone_controller.goto_location_with_formation_check(loc),
+            "3. Hedef Konuma İlerle",
+            lambda loc=target_positions[2]: self.drone_controller.goto_location_with_formation(loc, False), 
+            lambda loc=target_positions[2]: self.drone_controller.goto_location_with_formation_check(loc),
             should_skip=is_leaving_drone
         ))
         self.step_controller.add_step(Step(
@@ -209,7 +228,7 @@ async def main(sim_instance=0):
             drone, 
             drone_controller, 
             takeoff_altitude=5.0, 
-            user_selected_formation_type="cizgi", 
+            user_selected_formation_types=["cizgi"], 
             formation_distance=10.0, 
             formation_duration=5000,
             is_main_group_drone=True

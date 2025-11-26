@@ -185,15 +185,15 @@ class DroneService:
                 is_main_member = bool(int(parsed_message[5]))
                 is_leaving_member = bool(int(parsed_message[6]))
                 is_joining_member = not is_leaving_member and not is_main_member
-                formation_type = parsed_message[7]
+                formation_types = parsed_message[7:9]
                 print(parsed_message)
-                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 8)
+                mission_parameters = self.get_locations_from_parsed_message(gps_position, takeoff_altitude, parsed_message, 9)
                 print(mission_parameters)
                 self.activeMission = BireyEkleCikar2DroneMission(
                     self.drone, self.drone_controller,
                     takeoff_altitude=takeoff_altitude,
                     formation_distance=drone_distance,
-                    user_selected_formation_type=formation_type,
+                    user_selected_formation_types=formation_types,
                     target_positions=mission_parameters,
                     formasyon_suresi=hold_seconds,
                     is_joining_drone=is_joining_member,

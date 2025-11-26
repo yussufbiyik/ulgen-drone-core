@@ -467,7 +467,7 @@ class DroneController:
             if is_joining:
                 logging.info("Kendi katılacak dron olduğu için es geçiliyor")
                 return True
-            if len(self.drone.neighbors) > 0:
+            if len(self.drone.neighbors) > 1:
                 return False
             return True
         is_landed = await self.altitude_check(0)
@@ -476,10 +476,12 @@ class DroneController:
         await self.drone.send_message_with_ack("mf0")
         return True
 
-    async def join_formation(self):
+    async def join_formation(self, is_joining_drone):
         """
         Ayrılan bir formasyon üyesinin yerine geçerek dronu formasyona dahil eder
         """
+        if not is_joining_drone:
+            return True
         print(self.drone.inactive_neighbors)
         print("*")
         print(self.drone.neighbors)
@@ -536,7 +538,7 @@ class DroneController:
                 logging.info("Kendi inen dron olduğu için es geçiliyor")
                 return True
             any_synced = [n for n in self.drone.neighbors if n["data"].get("is_synced", False)]
-            if len(any_synced) > 0:
+            if len(any_synced) > 1:
                 return True
             return False
         current_data = await self.drone.mavsdk_controller.get_general_info()
