@@ -534,9 +534,6 @@ class DroneController:
     async def join_formation_check(self, is_joining, is_leaving):
         """Dronun formasyona katılıp katılmadığını kontrol eder"""
         if not is_joining:
-            if is_leaving:
-                logging.info("Kendi inen dron olduğu için es geçiliyor")
-                return True
             any_synced = [n for n in self.drone.neighbors if n["data"].get("is_synced", False)]
             if len(any_synced) > 1:
                 return True
@@ -548,6 +545,10 @@ class DroneController:
             current_gps
         )
         if distance_to_formation_point <= 0.2:
+            distance_to_formation_point = distance_meters(
+                self.drone.inactive_neighbors[0]["data"]["target_position"],
+                current_gps
+            )
             await self.drone.send_message_with_ack("ms1")
             return True
         return False
