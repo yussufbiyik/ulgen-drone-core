@@ -112,8 +112,8 @@ python tester.py missions.formasyon 0
 - [x] Çok yakın mesafelerde zaman zaman PID kitlenmesi
 - [x] Sıklığı azaltılmış olsa da irtifa kontrolünde zaman zaman yaşanan kitlenme problemi (Dronun doğru irtifaya çıkamamasıyla veya irtifa hesabının hatalı olmasına bağlı olabilir)
 - [x] Komşu dronların ID hesaplarının XBee modunda sorunlu olması
-- [ ] Birey ekle/çıkar görevinde iniş yapan dronun geri kalkamaması
-- [ ] Birey ekle/çıkar görevinde bazen 2 dronun da formasyondan çıkma emri alması
+- [x] Birey ekle/çıkar görevinde iniş yapan dronun geri kalkamaması
+- [x] Birey ekle/çıkar görevinde bazen 2 dronun da formasyondan çıkma emri alması
 
 ## Tamamlanan Görevler
 
@@ -125,7 +125,6 @@ python tester.py missions.formasyon 0
   - [x] Saha Testleri
 - Birey Ekleme Çıkartma Görevi
   - [x] Simülasyon Testleri
-  - [x] Saha Testleri (%90)
-- Sürü Keşif Görevi
-  - [x] Simülasyon Testleri
+  - [x] Saha Testleri (%100)
+
   - [x] Saha Testleri
