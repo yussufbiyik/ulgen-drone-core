@@ -1,5 +1,24 @@
 # drone-core
 
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <figure>
+        <video src="https://github.com/user-attachments/assets/dec98654-533b-49a9-8b87-8152f19a32d4" width="100%" controls></video>
+        <figcaption>Example of waypoint navigation with a single drone</figcaption>
+      </figure>
+    </td>
+    <td align="center" width="50%">
+      <figure>
+        <video src="https://github.com/user-attachments/assets/76d54142-9f74-4e87-a752-5f42cd070030" width="100%" controls></video>
+        <figcaption>Example of a 3 drone swarm morphing from line formation to triangle formation</figcaption>
+      </figure>
+    </td>
+  </tr>
+</table>
+
+---
+
 This repository contains the core software components for controlling a drone in a distributed swarm. It covers mission logic, flight controllers, and various other modules.
 
 This was the code that brought us 6th place in TEKNOFEST 2025 Swarm UAV competiton. 
