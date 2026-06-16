@@ -2,7 +2,10 @@
 
 This repository contains the core software components for controlling a drone in a distributed swarm. It covers mission logic, flight controllers, and various other modules.
 
-This was the code that brought us 6th place in TEKNOFEST 2025 Swarm UAV competiton.
+This was the code that brought us 6th place in TEKNOFEST 2025 Swarm UAV competiton. 
+
+> [!IMPORTANT]
+> I should mention: I coded both drone-core and the [GCS](https://github.com/yussufbiyik/ulgen-ground-control) alone in ~2 months, including a 2.5 week period with one eye swollen shut. Code quality declines towards the end, but it was field-tested and brought us 6th place.
 
 ## Project Structure
 
